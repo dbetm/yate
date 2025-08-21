@@ -1,4 +1,6 @@
+import os
 import tkinter as tk
+from datetime import datetime
 from tkinter import filedialog, messagebox
 from typing import Optional
 
@@ -25,6 +27,8 @@ class GUI:
 
 
 class FileEditor:
+    BEGIN_FILE = "0.0" # 0 row and 0 column
+
     def __init__(self, gui: GUI):
         self.filename = "Untitled"
         self.gui = gui
@@ -49,21 +53,30 @@ class FileEditor:
         self.filename = filename if filename else filepath.split("/")[-1]
         self.gui.root.title(f"YATE - {self.filename}")
 
+    def __solve_filepath_new_file(self, directory: str) -> Optional[str]:
+        datetime_str = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return f"{directory}/{self.filename}-{datetime_str}.txt"
+
     def new_file(self):
         self.__update_title(filename=self.filename)
         # Delete all the current content
-        self.gui.content.delete("0.0", tk.END)
+        self.gui.content.delete(self.BEGIN_FILE, tk.END)
 
     def save_file(self):
         # Get current text
-        text = self.gui.content.get("0.0", tk.END)
+        text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
-        with open(f"{self.filename}.txt", "w") as f:
+        directory = filedialog.askdirectory(initialdir="~/")
+        filepath = self.__solve_filepath_new_file(directory)
+
+        with open(filepath, "w") as f:
             f.write(text)
+
+        self.__update_title(filepath=filepath)
 
     def save_as(self):
         # Get current text
-        text = self.gui.content.get("0.0", tk.END)
+        text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
         # Get dialog
         filepath = filedialog.asksaveasfilename(defaultextension=".txt")
@@ -85,8 +98,8 @@ class FileEditor:
 
         self.__update_title(filepath=filepath)
 
-        self.gui.content.delete("0.0", tk.END)
-        self.gui.content.insert("0.0", content)
+        self.gui.content.delete(self.BEGIN_FILE, tk.END)
+        self.gui.content.insert(self.BEGIN_FILE, content)
 
 
 

@@ -1,0 +1,1 @@
+Yet Another Text Editor (YATE)

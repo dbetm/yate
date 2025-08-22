@@ -1,4 +1,3 @@
-import os
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox
@@ -25,6 +24,9 @@ class GUI:
     def run(self):
         self.root.mainloop()
 
+    def quit(self):
+        self.root.quit()
+
 
 class FileEditor:
     BEGIN_FILE = "0.0" # 0 row and 0 column
@@ -36,16 +38,23 @@ class FileEditor:
         self.__configure_menu()
 
     def __configure_menu(self):
-        self.gui.filemenu.add_command(label="New", command=self.new_file)
-        self.gui.filemenu.add_command(label="Open", command=self.open_file)
-        self.gui.filemenu.add_command(label="Save", command=self.save_file)
-        self.gui.filemenu.add_command(label="Save As", command=self.save_as)
+        self.gui.filemenu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
+        self.gui.filemenu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
+        self.gui.filemenu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
+        self.gui.filemenu.add_command(label="Save As", command=self.save_as, accelerator="Ctrl+w")
         self.gui.filemenu.add_separator()
-        self.gui.filemenu.add_command(label="Quit", command=self.gui.root.quit)
+        self.gui.filemenu.add_command(label="Quit", command=self.gui.quit, accelerator="Ctrl+Q")
 
         self.gui.menubar.add_cascade(label="File", menu=self.gui.filemenu)
 
         self.gui.root.config(menu=self.gui.menubar)
+
+        # Bind shortcuts
+        self.gui.root.bind_all("<Control-n>", lambda _: self.new_file())
+        self.gui.root.bind_all("<Control-o>", lambda _: self.open_file())
+        self.gui.root.bind_all("<Control-s>", lambda _: self.save_file())
+        self.gui.root.bind_all("<Control-w>", lambda _: self.save_as())
+        self.gui.root.bind_all("<Control-q>", lambda _: self.gui.quit())
 
     def __update_title(self, filename: Optional[str] = None, filepath: Optional[str] = None):
         assert filename or filepath
@@ -67,6 +76,10 @@ class FileEditor:
         text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
         directory = filedialog.askdirectory(initialdir="~/")
+
+        if not directory:
+            return
+
         filepath = self.__solve_filepath_new_file(directory)
 
         with open(filepath, "w") as f:
@@ -80,6 +93,9 @@ class FileEditor:
 
         # Get dialog
         filepath = filedialog.asksaveasfilename(defaultextension=".txt")
+
+        if not filepath:
+            return
 
         try:
             with open(filepath, "w") as f:

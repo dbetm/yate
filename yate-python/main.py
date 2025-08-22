@@ -1,21 +1,24 @@
 import tkinter as tk
 from datetime import datetime
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, font
 from typing import Optional
 
 
 
 class GUI:
-    DEFAULT_WIDTH = 600
-    DEFAULT_HEIGHT = 600
+    DEFAULT_WIDTH = 950
+    DEFAULT_HEIGHT = 460
 
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("YATE")
         self.root.minsize(width=self.DEFAULT_WIDTH, height=self.DEFAULT_HEIGHT)
-        self.root.maxsize(width=self.DEFAULT_WIDTH, height=self.DEFAULT_HEIGHT)
+        self.root.attributes('-alpha', 0.9)
 
-        self.content = tk.Text(self.root, wrap="word")
+        default_font = font.Font(family="Comic Sans MS", size=14)
+        self.content = tk.Text(
+            self.root, wrap="word", padx=10, pady=10, font=default_font, spacing3=4
+        )
         self.content.pack(expand=True, fill="both") # add to the root (parent)
 
         self.menubar = tk.Menu(self.root)

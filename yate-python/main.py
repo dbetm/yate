@@ -1,8 +1,9 @@
 import json
+from pathlib import Path
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox, font
-from typing import Optional
+from typing import List, Optional
 
 
 
@@ -26,6 +27,7 @@ class GUI:
 
         self.menubar = tk.Menu(self.root)
         self.filemenu = tk.Menu(self.menubar)
+        self.emojimenu = tk.Menu(self.filemenu, tearoff=0)
 
     def run(self):
         self.root.mainloop()
@@ -51,7 +53,9 @@ class GUI:
 
 class FileEditor:
     BEGIN_FILE = "0.0" # 0 row and 0 column
-    METADATA_PATH = "assets/metadata.json"
+    ASSETS_PATH = Path("assets")
+    METADATA_PATH = ASSETS_PATH / "metadata.json"
+    EMOJIS_PATH = ASSETS_PATH / "emojis.txt"
 
     def __init__(self, gui: GUI):
         self.filename = "Untitled"
@@ -59,18 +63,25 @@ class FileEditor:
         self.metadata = self.__load_metadata()
         self.unsaved_changes = False
 
-        self.__configure_menu()
+        emojis = self.__load_emojis()
+        self.__configure_menu(emojis)
 
-    def __configure_menu(self):
+    def __configure_menu(self, emojis: List[str]):
         self.gui.filemenu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
         self.gui.filemenu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
         self.gui.filemenu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
         self.gui.filemenu.add_command(label="Save As", command=self.save_as, accelerator="Ctrl+w")
         self.gui.filemenu.add_separator()
+
+        # Insert Emoji submenu
+        for emoji in emojis:
+            self.gui.emojimenu.add_command(label=emoji, command=lambda e = emoji: self.__insert_emoji(e))
+        self.gui.filemenu.add_cascade(label="Insert emoji", menu=self.gui.emojimenu)
+
+        self.gui.filemenu.add_separator()
         self.gui.filemenu.add_command(label="Quit", command=self.gui.quit, accelerator="Ctrl+Q")
 
         self.gui.menubar.add_cascade(label="File", menu=self.gui.filemenu)
-
         self.gui.root.config(menu=self.gui.menubar)
 
         # Bind shortcuts
@@ -83,6 +94,13 @@ class FileEditor:
     def __load_metadata(self) -> dict:
         with open(self.METADATA_PATH, "r") as file:
             return json.load(file)
+
+    def __load_emojis(self) -> List[str]:
+        with open(self.EMOJIS_PATH, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+
+    def __insert_emoji(self, emoji: str):
+        self.gui.content.insert(tk.INSERT, emoji)
 
     def __update_metadata(self, **kwargs) -> None:
         self.metadata.update(kwargs)

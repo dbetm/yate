@@ -1,3 +1,4 @@
+import json
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox, font
@@ -33,10 +34,12 @@ class GUI:
 
 class FileEditor:
     BEGIN_FILE = "0.0" # 0 row and 0 column
+    METADATA_PATH = "assets/metadata.json"
 
     def __init__(self, gui: GUI):
         self.filename = "Untitled"
         self.gui = gui
+        self.metadata = self.__load_metadata()
 
         self.__configure_menu()
 
@@ -59,6 +62,18 @@ class FileEditor:
         self.gui.root.bind_all("<Control-w>", lambda _: self.save_as())
         self.gui.root.bind_all("<Control-q>", lambda _: self.gui.quit())
 
+    def __load_metadata(self) -> dict:
+        with open(self.METADATA_PATH, "r") as file:
+            return json.load(file)
+
+    def __update_metadata(self, **kwargs) -> None:
+        self.metadata.update(kwargs)
+
+        with open(self.METADATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(self.metadata, f)
+
+        print("Metadata was updated...")
+
     def __update_title(self, filename: Optional[str] = None, filepath: Optional[str] = None):
         assert filename or filepath
 
@@ -78,7 +93,9 @@ class FileEditor:
         # Get current text
         text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
-        directory = filedialog.askdirectory(initialdir="~/")
+        directory = filedialog.askdirectory(
+            initialdir=self.metadata.get("last_path_used", "~/")
+        )
 
         if not directory:
             return
@@ -89,12 +106,13 @@ class FileEditor:
             f.write(text)
 
         self.__update_title(filepath=filepath)
+        self.__update_metadata(last_path_used=directory)
 
     def save_as(self):
         # Get current text
         text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
-        # Get dialog
+        # Get dialog, the future request will remember the chosen directory
         filepath = filedialog.asksaveasfilename(defaultextension=".txt")
 
         if not filepath:
@@ -107,10 +125,15 @@ class FileEditor:
             messagebox.showerror(title="Oops!", message="Unable to save file...")
         
         self.__update_title(filepath=filepath)
-
+        self.__update_metadata(last_path_used="/".join(filepath.split("/")[:-1]))
 
     def open_file(self):
-        filepath = filedialog.askopenfilename(defaultextension=".txt")
+        filepath = filedialog.askopenfilename(
+            defaultextension=".txt", initialdir=self.metadata.get("last_path_used", "~/")
+        )
+
+        if not filepath:
+            return
 
         with open(filepath, "r") as f:
             content = f.read()

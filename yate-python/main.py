@@ -15,6 +15,8 @@ class GUI:
         self.root.title("YATE")
         self.root.minsize(width=self.DEFAULT_WIDTH, height=self.DEFAULT_HEIGHT)
         self.root.attributes('-alpha', 0.9)
+        # handle closing the window
+        self.root.protocol("WM_DELETE_WINDOW", self.quit)
 
         default_font = font.Font(family="Comic Sans MS", size=14)
         self.content = tk.Text(
@@ -29,7 +31,22 @@ class GUI:
         self.root.mainloop()
 
     def quit(self):
+        confirm_msg = "Are you sure you want to exit?"
+        if self.content.edit_modified():
+            if not messagebox.askokcancel("Changes unsaved", message=confirm_msg, icon="warning"):
+                return
+
         self.root.quit()
+
+    def confirm_open_new_file(self) -> bool:
+        confirm_msg = "Are you sure you open another file without saving this?"
+        if self.content.edit_modified():
+            return messagebox.askokcancel("Changes unsaved - new file?", message=confirm_msg)
+
+        return True
+
+    def reset_modified(self):
+        self.content.edit_modified(False)
 
 
 class FileEditor:
@@ -40,6 +57,7 @@ class FileEditor:
         self.filename = "Untitled"
         self.gui = gui
         self.metadata = self.__load_metadata()
+        self.unsaved_changes = False
 
         self.__configure_menu()
 
@@ -107,6 +125,7 @@ class FileEditor:
 
         self.__update_title(filepath=filepath)
         self.__update_metadata(last_path_used=directory)
+        self.gui.reset_modified()
 
     def save_as(self):
         # Get current text
@@ -126,8 +145,12 @@ class FileEditor:
         
         self.__update_title(filepath=filepath)
         self.__update_metadata(last_path_used="/".join(filepath.split("/")[:-1]))
+        self.gui.reset_modified()
 
     def open_file(self):
+        if not self.gui.confirm_open_new_file():
+            return
+
         filepath = filedialog.askopenfilename(
             defaultextension=".txt", initialdir=self.metadata.get("last_path_used", "~/")
         )
@@ -142,6 +165,9 @@ class FileEditor:
 
         self.gui.content.delete(self.BEGIN_FILE, tk.END)
         self.gui.content.insert(self.BEGIN_FILE, content)
+
+        self.__update_metadata(last_path_used="/".join(filepath.split("/")[:-1]))
+        self.gui.reset_modified()
 
 
 

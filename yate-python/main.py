@@ -58,10 +58,10 @@ class FileEditor:
     EMOJIS_PATH = ASSETS_PATH / "emojis.txt"
 
     def __init__(self, gui: GUI):
-        self.filename = "Untitled"
         self.gui = gui
         self.metadata = self.__load_metadata()
         self.unsaved_changes = False
+        self.filepath = None
 
         emojis = self.__load_emojis()
         self.__configure_menu(emojis)
@@ -110,18 +110,20 @@ class FileEditor:
 
         print("Metadata was updated...")
 
-    def __update_title(self, filename: Optional[str] = None, filepath: Optional[str] = None):
-        assert filename or filepath
-
-        self.filename = filename if filename else filepath.split("/")[-1]
-        self.gui.root.title(f"YATE - {self.filename}")
+    def __update_title(self):
+        if self.filepath:
+            filename = self.filepath.split("/")[-1]
+        else:
+            filename = "Untitled"
+        self.gui.root.title(f"YATE - {filename}")
 
     def __solve_filepath_new_file(self, directory: str) -> Optional[str]:
         datetime_str = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return f"{directory}/{self.filename}-{datetime_str}.txt"
+        return f"{directory}/untitled-{datetime_str}.txt"
 
     def new_file(self):
-        self.__update_title(filename=self.filename)
+        self.filepath = None
+        self.__update_title()
         # Delete all the current content
         self.gui.content.delete(self.BEGIN_FILE, tk.END)
 
@@ -129,20 +131,22 @@ class FileEditor:
         # Get current text
         text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
-        directory = filedialog.askdirectory(
-            initialdir=self.metadata.get("last_path_used", "~/")
-        )
+        if not self.filepath:
+            directory = filedialog.askdirectory(
+                initialdir=self.metadata.get("last_path_used", "~/")
+            )
 
-        if not directory:
-            return
+            if not directory:
+                return
 
-        filepath = self.__solve_filepath_new_file(directory)
+            filepath = self.__solve_filepath_new_file(directory)
+            self.filepath = filepath
 
-        with open(filepath, "w") as f:
+        with open(self.filepath, "w") as f:
             f.write(text)
 
-        self.__update_title(filepath=filepath)
-        self.__update_metadata(last_path_used=directory)
+        self.__update_title()
+        self.__update_metadata(last_path_used="/".join(self.filepath.split("/")[:-1]))
         self.gui.reset_modified()
 
     def save_as(self):
@@ -155,14 +159,16 @@ class FileEditor:
         if not filepath:
             return
 
+        self.filepath = filepath
+
         try:
-            with open(filepath, "w") as f:
+            with open(self.filepath, "w") as f:
                 f.write(text)
         except:
             messagebox.showerror(title="Oops!", message="Unable to save file...")
         
-        self.__update_title(filepath=filepath)
-        self.__update_metadata(last_path_used="/".join(filepath.split("/")[:-1]))
+        self.__update_title()
+        self.__update_metadata(last_path_used="/".join(self.filepath.split("/")[:-1]))
         self.gui.reset_modified()
 
     def open_file(self):
@@ -176,10 +182,12 @@ class FileEditor:
         if not filepath:
             return
 
-        with open(filepath, "r") as f:
+        self.filepath = filepath
+
+        with open(self.filepath, "r") as f:
             content = f.read()
 
-        self.__update_title(filepath=filepath)
+        self.__update_title()
 
         self.gui.content.delete(self.BEGIN_FILE, tk.END)
         self.gui.content.insert(self.BEGIN_FILE, content)

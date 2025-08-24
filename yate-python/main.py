@@ -3,7 +3,7 @@ from pathlib import Path
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox, font
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 
@@ -56,17 +56,17 @@ class FileEditor:
     ASSETS_PATH = Path("assets")
     METADATA_PATH = ASSETS_PATH / "metadata.json"
     EMOJIS_PATH = ASSETS_PATH / "emojis.txt"
+    ENCODING = "utf-8"
 
     def __init__(self, gui: GUI):
         self.gui = gui
-        self.metadata = self.__load_metadata()
-        self.unsaved_changes = False
-        self.filepath = None
+        self.metadata: Dict[str, Any] = self._load_metadata()
+        self.filepath: Optional[Path] = None
 
-        emojis = self.__load_emojis()
+        emojis = self._load_emojis()
         self.__configure_menu(emojis)
 
-    def __configure_menu(self, emojis: List[str]):
+    def __configure_menu(self, emojis: List[str]) -> None:
         self.gui.filemenu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
         self.gui.filemenu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
         self.gui.filemenu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
@@ -75,7 +75,7 @@ class FileEditor:
 
         # Insert Emoji submenu
         for emoji in emojis:
-            self.gui.emojimenu.add_command(label=emoji, command=lambda e = emoji: self.__insert_emoji(e))
+            self.gui.emojimenu.add_command(label=emoji, command=lambda e = emoji: self._insert_emoji(e))
         self.gui.filemenu.add_cascade(label="Insert emoji", menu=self.gui.emojimenu)
 
         self.gui.filemenu.add_separator()
@@ -84,46 +84,58 @@ class FileEditor:
         self.gui.menubar.add_cascade(label="File", menu=self.gui.filemenu)
         self.gui.root.config(menu=self.gui.menubar)
 
-        # Bind shortcuts
-        self.gui.root.bind_all("<Control-n>", lambda _: self.new_file())
-        self.gui.root.bind_all("<Control-o>", lambda _: self.open_file())
-        self.gui.root.bind_all("<Control-s>", lambda _: self.save_file())
-        self.gui.root.bind_all("<Control-w>", lambda _: self.save_as())
-        self.gui.root.bind_all("<Control-q>", lambda _: self.gui.quit())
+        # Shortcuts
+        bindings = {
+            "<Control-n>": self.new_file,
+            "<Control-o>": self.open_file,
+            "<Control-s>": self.save_file,
+            "<Control-w>": self.save_as,
+            "<Control-q>": self.gui.quit,
+        }
+        for key, func in bindings.items():
+            self.gui.root.bind_all(key, lambda _, f=func: f())
 
-    def __load_metadata(self) -> dict:
-        with open(self.METADATA_PATH, "r") as file:
-            return json.load(file)
+    def _load_metadata(self) -> dict:
+        if self.METADATA_PATH.exists():
+            with open(self.METADATA_PATH, "r", encoding=self.ENCODING) as file:
+                return json.load(file)
 
-    def __load_emojis(self) -> List[str]:
-        with open(self.EMOJIS_PATH, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
+        print("Warning: Metadata file not found")
+        return {}
 
-    def __insert_emoji(self, emoji: str):
+    def _load_emojis(self) -> List[str]:
+        if self.EMOJIS_PATH.exists():
+            with open(self.EMOJIS_PATH, "r", encoding=self.ENCODING) as f:
+                return [line.strip() for line in f if line.strip()]
+
+        print("Warning: Emojis file not found")
+        return []
+
+    def _insert_emoji(self, emoji: str) -> None:
         self.gui.content.insert(tk.INSERT, emoji)
 
-    def __update_metadata(self, **kwargs) -> None:
+    def _update_metadata(self, **kwargs) -> None:
         self.metadata.update(kwargs)
 
-        with open(self.METADATA_PATH, "w", encoding="utf-8") as f:
-            json.dump(self.metadata, f)
+        with open(self.METADATA_PATH, "w", encoding=self.ENCODING) as f:
+            json.dump(self.metadata, f, indent=4)
 
         print("Metadata was updated...")
 
-    def __update_title(self):
+    def _update_title(self):
         if self.filepath:
-            filename = self.filepath.split("/")[-1]
+            filename = self.filepath.name
         else:
             filename = "Untitled"
         self.gui.root.title(f"YATE - {filename}")
 
-    def __solve_filepath_new_file(self, directory: str) -> Optional[str]:
+    def _generate_new_filepath(self, directory: Path) -> Path:
         datetime_str = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return f"{directory}/untitled-{datetime_str}.txt"
+        return directory / f"untitled-{datetime_str}.txt"
 
     def new_file(self):
         self.filepath = None
-        self.__update_title()
+        self._update_title()
         # Delete all the current content
         self.gui.content.delete(self.BEGIN_FILE, tk.END)
 
@@ -139,14 +151,13 @@ class FileEditor:
             if not directory:
                 return
 
-            filepath = self.__solve_filepath_new_file(directory)
-            self.filepath = filepath
+            self.filepath = self._generate_new_filepath(Path(directory))
 
         with open(self.filepath, "w") as f:
             f.write(text)
 
-        self.__update_title()
-        self.__update_metadata(last_path_used="/".join(self.filepath.split("/")[:-1]))
+        self._update_title()
+        self._update_metadata(last_path_used=str(self.filepath.parent))
         self.gui.reset_modified()
 
     def save_as(self):
@@ -159,16 +170,16 @@ class FileEditor:
         if not filepath:
             return
 
-        self.filepath = filepath
+        self.filepath = Path(filepath)
 
         try:
             with open(self.filepath, "w") as f:
                 f.write(text)
-        except:
+        except OSError:
             messagebox.showerror(title="Oops!", message="Unable to save file...")
         
-        self.__update_title()
-        self.__update_metadata(last_path_used="/".join(self.filepath.split("/")[:-1]))
+        self._update_title()
+        self._update_metadata(last_path_used=str(self.filepath.parent))
         self.gui.reset_modified()
 
     def open_file(self):
@@ -176,23 +187,25 @@ class FileEditor:
             return
 
         filepath = filedialog.askopenfilename(
-            defaultextension=".txt", initialdir=self.metadata.get("last_path_used", "~/")
+            defaultextension=".txt",
+            filetypes=[("Text Files", "*.txt")],
+            initialdir=self.metadata.get("last_path_used", "~/")
         )
 
         if not filepath:
             return
 
-        self.filepath = filepath
+        self.filepath = Path(filepath)
 
-        with open(self.filepath, "r") as f:
+        with open(self.filepath, "r", encoding=self.ENCODING) as f:
             content = f.read()
 
-        self.__update_title()
+        self._update_title()
 
         self.gui.content.delete(self.BEGIN_FILE, tk.END)
         self.gui.content.insert(self.BEGIN_FILE, content)
 
-        self.__update_metadata(last_path_used="/".join(filepath.split("/")[:-1]))
+        self._update_metadata(last_path_used="/".join(filepath.split("/")[:-1]))
         self.gui.reset_modified()
 
 

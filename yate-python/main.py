@@ -41,6 +41,8 @@ class GUI:
         self.root.quit()
 
     def confirm_open_new_file(self) -> bool:
+        """Open a message box asking to confirm that the user wants to open a new file if there are 
+        unsaved changes."""
         confirm_msg = "Are you sure you open another file without saving this?"
         if self.content.edit_modified():
             return messagebox.askokcancel("Changes unsaved - new file?", message=confirm_msg)
@@ -48,6 +50,7 @@ class GUI:
         return True
 
     def reset_modified(self):
+        """Set to `False` the internal flag used by the content Text widget."""
         self.content.edit_modified(False)
 
 
@@ -96,6 +99,7 @@ class FileEditor:
             self.gui.root.bind_all(key, lambda _, f=func: f())
 
     def _load_metadata(self) -> dict:
+        """Load metadata JSON file to load data related to past user's interactions."""
         if self.METADATA_PATH.exists():
             with open(self.METADATA_PATH, "r", encoding=self.ENCODING) as file:
                 return json.load(file)
@@ -115,6 +119,7 @@ class FileEditor:
         self.gui.content.insert(tk.INSERT, emoji)
 
     def _update_metadata(self, **kwargs) -> None:
+        """Update in-memory metadata dictionary and save it into disk."""
         self.metadata.update(kwargs)
 
         with open(self.METADATA_PATH, "w", encoding=self.ENCODING) as f:
@@ -130,6 +135,7 @@ class FileEditor:
         self.gui.root.title(f"YATE - {filename}")
 
     def _generate_new_filepath(self, directory: Path) -> Path:
+        """Return a filepath for new files with a default name and timestamp."""
         datetime_str = datetime.now().strftime("%Y%m%d-%H%M%S")
         return directory / f"untitled-{datetime_str}.txt"
 
@@ -140,6 +146,7 @@ class FileEditor:
         self.gui.content.delete(self.BEGIN_FILE, tk.END)
 
     def save_file(self):
+        """Save new file or new changes of a opened file."""
         # Get current text
         text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 
@@ -161,6 +168,7 @@ class FileEditor:
         self.gui.reset_modified()
 
     def save_as(self):
+        """Save file as a copy, maybe a different path with another name which will chose by the user."""
         # Get current text
         text = self.gui.content.get(self.BEGIN_FILE, tk.END)
 

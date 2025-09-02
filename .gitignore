@@ -166,3 +166,6 @@ cython_debug/
 
 # Data
 sample-files/*.txt
+
+# compiled from yate-c
+yate-c/kilo

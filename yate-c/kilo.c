@@ -1,15 +1,32 @@
+/*** includes ***/
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
+#include <errno.h>
 
 
+/*** data ***/
 struct termios original_terminal;
+
+/*** terminal ***/
+void die(const char *s) {
+    /*Most C library functions that fail will set the global errno variable to indicate what the error was. 
+    perror() looks at the global errno variable and prints a descriptive error message for it.
+
+    It also prints the string given to it before it prints the error message
+    */
+    perror(s);
+    exit(1);
+}
+
 
 void disableRawMode() {
     // we want to disable raw mode when exiting the program in order to keep user with their Terminal "stable".
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_terminal);
+    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_terminal) == -1) {
+        die("tcsetattr");
+    }
 }
 
 
@@ -32,7 +49,7 @@ void enableRawMode() {
     reading input byte-by-byte, instead of line-by-line.
     */
 
-    tcgetattr(STDIN_FILENO, &original_terminal);
+    if(tcgetattr(STDIN_FILENO, &original_terminal) == -1) die("tcsetattr");
     // restore to the original value
     atexit(disableRawMode);
 
@@ -72,15 +89,23 @@ void enableRawMode() {
     raw.c_iflag &= ~(IXON | ICRNL | BRKINT | INPCK | ISTRIP); // input flags
     raw.c_oflag &= ~(OPOST); // output flags
     raw.c_cflag |= (CS8); // control flags
-    tcsetattr(STDERR_FILENO, TCSAFLUSH, &raw);
+    raw.c_cc[VMIN] = 0; // The VMIN value sets the minimum number of bytes of input needed before read() can return
+    raw.c_cc[VTIME] = 1; // The VTIME value sets the maximum amount of time to wait before read() returns. It is in tenths of a second, or 100 milliseconds.
+
+    if(tcsetattr(STDERR_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
 
+/*** init ***/
 int main(int argc, char const *argv[]) {
     enableRawMode();
 
     char c;
-    while(read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
+
+    while(1) {
+        char c = '\0';
+
+        if(read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
         // display read characters
         if(iscntrl(c)) { // is a control char? ASCII 0-31
             printf("%d\r\n", c);
@@ -88,6 +113,7 @@ int main(int argc, char const *argv[]) {
         else {
             printf("%d ('%c')\r\n", c, c); // print the ascii number and char?
         }
+        if(c == 'q') break;
     }
     return 0;
 }

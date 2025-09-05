@@ -7,6 +7,24 @@
 #include <errno.h>
 
 
+/* defines */
+
+/* The CTRL_KEY macro bitwise-ANDs a character with the value 00011111, in binary. 
+(In C, you generally specify bitmasks using hexadecimal, since C doesn’t have binary literals)
+
+It sets the upper 3 bits of the character to 0. This mirrors what the Ctrl key does in the terminal: 
+it strips bits 5 and 6 from whatever key you press in combination with Ctrl, and sends that.
+Example:
+    'q' = 113 in decimal, 1110001 in binary
+    113 & 31
+    01110001 & 
+    00011111
+=   00010001
+= 17 (which is the equivalent to Ctrl+q)
+*/
+#define CTRL_KEY(k) ((k) & 0x1f)
+
+
 /*** data ***/
 struct termios original_terminal;
 
@@ -95,6 +113,47 @@ void enableRawMode() {
     if(tcsetattr(STDERR_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
+char editorReadKey() {
+    /* Wait for one keypress, and return it */
+    int nread;
+    char c;
+
+    while((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+        if(nread == -1 && errno != EAGAIN) die("read");
+    }
+
+    return c;
+}
+
+/** output ***/
+void editorRefreshScreen() {
+    /*The 4 in our write() call means we are writing 4 bytes out to the terminal. 
+    The first byte is \x1b, which is the escape character, or 27 in decimal.
+
+    We are writing an escape sequence to the terminal. Escape sequences always start with an escape character
+    followed by a [ character. Escape sequences instruct the terminal to do various text formatting tasks, 
+    such as coloring text, moving the cursor around, and clearing parts of the screen.
+
+    We are using the J command (Erase In Display) to clear the screen. Escape sequence commands take arguments,
+    which come before the command. In this case the argument is 2, which says to clear the entire screen. 
+    <esc>[1J would clear the screen up to where the cursor is, and <esc>[0J would clear the screen from the 
+    cursor up to the end of the screen.
+    */
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+}
+
+/*** input ***/
+void editorProcessKeypress() {
+    /* waits for a keypress, and then handles it. */
+    char c = editorReadKey();
+
+    switch (c) {
+        case CTRL_KEY('q'):
+            exit(0);
+            break;
+    }
+}
+
 
 /*** init ***/
 int main(int argc, char const *argv[]) {
@@ -103,17 +162,8 @@ int main(int argc, char const *argv[]) {
     char c;
 
     while(1) {
-        char c = '\0';
-
-        if(read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
-        // display read characters
-        if(iscntrl(c)) { // is a control char? ASCII 0-31
-            printf("%d\r\n", c);
-        }
-        else {
-            printf("%d ('%c')\r\n", c, c); // print the ascii number and char?
-        }
-        if(c == 'q') break;
+        editorRefreshScreen();
+        editorProcessKeypress();
     }
     return 0;
 }

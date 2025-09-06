@@ -2,6 +2,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 #include <errno.h>
@@ -26,10 +27,19 @@ Example:
 
 
 /*** data ***/
-struct termios original_terminal;
+struct editorConfig {
+    struct termios original_terminal;
+    int screenrows;
+    int screencols;
+};
+struct editorConfig E;
 
 /*** terminal ***/
 void die(const char *s) {
+    // reset screen
+    write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
+    write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
+
     /*Most C library functions that fail will set the global errno variable to indicate what the error was. 
     perror() looks at the global errno variable and prints a descriptive error message for it.
 
@@ -42,7 +52,7 @@ void die(const char *s) {
 
 void disableRawMode() {
     // we want to disable raw mode when exiting the program in order to keep user with their Terminal "stable".
-    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_terminal) == -1) {
+    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.original_terminal) == -1) {
         die("tcsetattr");
     }
 }
@@ -67,11 +77,11 @@ void enableRawMode() {
     reading input byte-by-byte, instead of line-by-line.
     */
 
-    if(tcgetattr(STDIN_FILENO, &original_terminal) == -1) die("tcsetattr");
+    if(tcgetattr(STDIN_FILENO, &E.original_terminal) == -1) die("tcsetattr");
     // restore to the original value
     atexit(disableRawMode);
 
-    struct termios raw = original_terminal;
+    struct termios raw = E.original_terminal;
     // Update ECHO and CANONICAL mode flags
     /* We want too to handle some key combinations:
         1. Turn off ctrl+c (SIGINT) and ctrl+z (SIGTSTP) signals, which terminates or suspend the program.
@@ -125,7 +135,28 @@ char editorReadKey() {
     return c;
 }
 
+int getWindowSize(int *rows, int *cols) {
+    struct winsize ws;
+
+    if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+        return -1;
+    }
+    else {
+        *cols = ws.ws_col;
+        *rows = ws.ws_row;
+        return 0;
+    }
+}
+
 /** output ***/
+void editorDrawRows() {
+    int y;
+    for(y = 0; y < E.screenrows; y++) {
+        write(STDOUT_FILENO, "~\r\n", 3);
+    }
+}
+
+
 void editorRefreshScreen() {
     /*The 4 in our write() call means we are writing 4 bytes out to the terminal. 
     The first byte is \x1b, which is the escape character, or 27 in decimal.
@@ -139,7 +170,11 @@ void editorRefreshScreen() {
     <esc>[1J would clear the screen up to where the cursor is, and <esc>[0J would clear the screen from the 
     cursor up to the end of the screen.
     */
-    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
+    write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor at top, the default args are row and column 1 and 1
+
+    editorDrawRows();
+    write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 /*** input ***/
@@ -149,6 +184,9 @@ void editorProcessKeypress() {
 
     switch (c) {
         case CTRL_KEY('q'):
+            // reset screen
+            write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
+            write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
             exit(0);
             break;
     }
@@ -156,8 +194,13 @@ void editorProcessKeypress() {
 
 
 /*** init ***/
+void initEditor() {
+    if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+}
+
 int main(int argc, char const *argv[]) {
     enableRawMode();
+    initEditor();
 
     char c;
 

@@ -135,11 +135,40 @@ char editorReadKey() {
     return c;
 }
 
+int getCursorPosition(int *rows, int *cols) {
+    char buffer[32];
+    unsigned int i = 0;
+    /* The n command (Device Status Report) can be used to query the terminal for status information.
+    We want to give it an argument of 6 to ask for the cursor position. */
+    if(write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
+
+    while (i < sizeof(buffer) - 1) {
+        if (read(STDIN_FILENO, &buffer[i], 1) != 1) break;
+        if (buffer[i] == 'R') break; // the R is the final char of the cursor position report
+        i++;
+    }
+    buffer[i] = '\0';
+    /* Skip the first character in buffer by passing &buf[1] and avoid the terminal interpreting it as 
+    an escape sequence.
+    printf() expects strings to end with a 0 byte, so we make sure to assign '\0' to the final byte.
+    */
+    // printf("\r\n&buf[1]: '%s'\r\n", &buffer[1]);
+
+    if (buffer[0] != '\x1b' || buffer[1] != '[') return -1; // make sure it responded with an escape sequence
+    // get the position parsing the response
+    if(sscanf(&buffer[2], "%d;%d", rows, cols) != 2) return -1;
+
+    return 0;
+}
+
 int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
 
     if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-        return -1;
+        // moving the cursor to the bottom-right (fallback method to get the window size)
+        // C command is move cursor forward and B cmd is move the cursor down
+        if(write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
+        return getCursorPosition(rows, cols);
     }
     else {
         *cols = ws.ws_col;
@@ -152,7 +181,12 @@ int getWindowSize(int *rows, int *cols) {
 void editorDrawRows() {
     int y;
     for(y = 0; y < E.screenrows; y++) {
-        write(STDOUT_FILENO, "~\r\n", 3);
+        write(STDOUT_FILENO, "~", 1); // write tilde for each visible row
+
+        // and for all except the last line, print \r\n
+        if(y < E.screenrows - 1) {
+            write(STDOUT_FILENO, "\r\n", 2);
+        }
     }
 }
 

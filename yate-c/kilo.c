@@ -11,6 +11,8 @@
 
 /* defines */
 
+#define KILO_VERSION "0.0.1"
+
 /* The CTRL_KEY macro bitwise-ANDs a character with the value 00011111, in binary. 
 (In C, you generally specify bitmasks using hexadecimal, since C doesn’t have binary literals)
 
@@ -29,6 +31,7 @@ Example:
 
 /*** data ***/
 struct editorConfig {
+    int cx, cy; // horizontal coordinate and vertical coordinate
     struct termios original_terminal;
     int screenrows;
     int screencols;
@@ -213,9 +216,35 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
     int y;
     for(y = 0; y < E.screenrows; y++) {
-        // write(STDOUT_FILENO, "~", 1); // write tilde for each visible row
-        abAppend(ab, "~", 1);
+        if(y == E.screenrows / 3) {
+            // write a WELCOME message
+            char welcome[80];
+            /*We use the welcome buffer and snprintf() to interpolate our KILO_VERSION string into 
+            the welcome message*/
+            int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- version %s", KILO_VERSION);
 
+            if(welcomelen > E.screencols) welcomelen = E.screencols;
+
+            // center the message
+            int padding = (E.screencols - welcomelen) / 2;
+            if(padding) {
+                abAppend(ab, "~", 1);
+                padding--;
+            }
+            while(padding--) abAppend(ab, " ", 1);
+
+            abAppend(ab, welcome, welcomelen);
+        }
+        else {
+            // write(STDOUT_FILENO, "~", 1); // write tilde for each visible row
+            abAppend(ab, "~", 1);
+        }
+        /* The K command (Erase In Line) erases part of the current line. 
+        Its argument is analogous to the J command’s argument: 2 erases the whole line, 
+        1 erases the part of the line to the left of the cursor, 
+        and 0 erases the part of the line to the right of the cursor (default)
+        */
+        abAppend(ab, "\x1b[K", 3); // clear each line as we redraw it
         // and for all except the last line, print \r\n
         if(y < E.screenrows - 1) {
             abAppend(ab, "\r\n", 2);
@@ -242,12 +271,20 @@ void editorRefreshScreen() {
 
     struct abuf ab = ABUF_INIT;
     abAppend(&ab, "\x1b[?25l", 6); // hide cursor when repainting
-    abAppend(&ab, "\x1b[2J", 4);
-    abAppend(&ab, "\x1b[H", 4);
+    // abAppend(&ab, "\x1b[2J", 4); // don't clear full screen, instead clear each line as we redraw it
+    abAppend(&ab, "\x1b[H", 3);
     editorDrawRows(&ab);
 
+    // move the cursor to the position stored in E.cx and E.cy.
+    char buf[32];
+    // We changed the old H command into an H command with arguments, specifying the exact position 
+    // we want the cursor to move to. We add 1 to E.cy and E.cx to convert from 0-indexed values to the 1-indexed 
+    // values that the terminal uses.
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    abAppend(&ab, buf, strlen(buf));
+
     // write(STDOUT_FILENO, "\x1b[H", 3);
-    abAppend(&ab, "\x1b[H", 4); // relocate cursor again
+    // abAppend(&ab, "\x1b[H", 4); // relocate cursor again
     abAppend(&ab, "\x1b[?25h", 6); // show cursor again
 
     // write the full buffer
@@ -256,6 +293,24 @@ void editorRefreshScreen() {
 }
 
 /*** input ***/
+void editorMoveCursor(char key) {
+    switch (key) {
+        case 'a':
+            E.cx--;
+            break;
+        case 'd':
+            E.cx++;
+            break;
+        case 'w':
+            E.cy--;
+            break;
+        case 's':
+            E.cy++;
+            break;
+    }
+}
+
+
 void editorProcessKeypress() {
     /* waits for a keypress, and then handles it. */
     char c = editorReadKey();
@@ -267,14 +322,23 @@ void editorProcessKeypress() {
             write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
             exit(0);
             break;
+        case 'w':
+        case 's':
+        case 'a':
+        case 'd':
+            editorMoveCursor(c);
+            break;
     }
 }
 
 
 /*** init ***/
 void initEditor() {
+    E.cx = 0;
+    E.cy = 0;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
+
 
 int main(int argc, char const *argv[]) {
     enableRawMode();

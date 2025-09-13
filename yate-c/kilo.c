@@ -28,6 +28,15 @@ Example:
 */
 #define CTRL_KEY(k) ((k) & 0x1f)
 
+/* By setting the first constant in the enum to 1000, the rest of the constants get incrementing values 
+of 1001, 1002, 1003, and so on. */
+enum editorKey {
+    ARROW_LEFT = 1000,
+    ARROW_RIGHT,
+    ARROW_UP,
+    ARROW_DOWN
+};
+
 
 /*** data ***/
 struct editorConfig {
@@ -127,13 +136,35 @@ void enableRawMode() {
     if(tcsetattr(STDERR_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
-char editorReadKey() {
+int editorReadKey() {
     /* Wait for one keypress, and return it */
     int nread;
     char c;
 
     while((nread = read(STDIN_FILENO, &c, 1)) != 1) {
         if(nread == -1 && errno != EAGAIN) die("read");
+    }
+
+    printf("'%c'", c);
+
+    // process arrow keys
+    if(c == '\1xb') {
+        char seq[3];
+
+        if(read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+        if(read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+
+        if(seq[0] == '[') {
+            // mapping to be able to move the cursor with narrow keys
+            switch(seq[1]) {
+                case 'A': return ARROW_UP;
+                case 'B': return ARROW_DOWN;
+                case 'C': return ARROW_RIGHT;
+                case 'D': return ARROW_LEFT;
+            }
+        }
+
+        return '\x1b';
     }
 
     return c;
@@ -293,18 +324,18 @@ void editorRefreshScreen() {
 }
 
 /*** input ***/
-void editorMoveCursor(char key) {
+void editorMoveCursor(int key) {
     switch (key) {
-        case 'a':
+        case ARROW_LEFT:
             E.cx--;
             break;
-        case 'd':
+        case ARROW_RIGHT:
             E.cx++;
             break;
-        case 'w':
+        case ARROW_UP:
             E.cy--;
             break;
-        case 's':
+        case ARROW_DOWN:
             E.cy++;
             break;
     }
@@ -313,7 +344,7 @@ void editorMoveCursor(char key) {
 
 void editorProcessKeypress() {
     /* waits for a keypress, and then handles it. */
-    char c = editorReadKey();
+    int c = editorReadKey();
 
     switch (c) {
         case CTRL_KEY('q'):
@@ -322,10 +353,10 @@ void editorProcessKeypress() {
             write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
             exit(0);
             break;
-        case 'w':
-        case 's':
-        case 'a':
-        case 'd':
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
             editorMoveCursor(c);
             break;
     }

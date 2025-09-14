@@ -145,10 +145,10 @@ int editorReadKey() {
         if(nread == -1 && errno != EAGAIN) die("read");
     }
 
-    printf("'%c'", c);
+    //printf("'%c'", c);
 
     // process arrow keys
-    if(c == '\1xb') {
+    if(c == '\x1b') {
         char seq[3];
 
         if(read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
@@ -327,16 +327,24 @@ void editorRefreshScreen() {
 void editorMoveCursor(int key) {
     switch (key) {
         case ARROW_LEFT:
-            E.cx--;
+            if(E.cx != 0) {
+                E.cx--;
+            }
             break;
         case ARROW_RIGHT:
-            E.cx++;
+            if(E.cx != E.screencols - 1) {
+                E.cx++;
+            }
             break;
         case ARROW_UP:
-            E.cy--;
+            if(E.cy != 0) {
+                E.cy--;
+            }
             break;
         case ARROW_DOWN:
-            E.cy++;
+            if(E.cy != E.screenrows - 1) {
+                E.cy++;
+            }
             break;
     }
 }

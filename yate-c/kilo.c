@@ -34,7 +34,12 @@ enum editorKey {
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
-    ARROW_DOWN
+    ARROW_DOWN,
+    DEL_KEY, // the escape sequence: <esc>[3~
+    HOME_KEY, // The Home key could be sent as <esc>[1~, <esc>[7~, <esc>[H, or <esc>OH
+    END_KEY, // The End key could be sent as <esc>[4~, <esc>[8~, <esc>[F, or <esc>OF
+    PAGE_UP, // escape sequence: <esc>[5~
+    PAGE_DOWN // escape sequence: <esc>[6~
 };
 
 
@@ -156,11 +161,35 @@ int editorReadKey() {
 
         if(seq[0] == '[') {
             // mapping to be able to move the cursor with narrow keys
+            if(seq[1] >= '0' && seq[1] <= '9') {
+                if(read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+                if(seq[2] == '~') {
+                    switch(seq[1]) {
+                        case '1': return HOME_KEY;
+                        case '3': return DEL_KEY;
+                        case '4': return END_KEY;
+                        case '5': return PAGE_UP;
+                        case '6': return PAGE_DOWN;
+                        case '7': return HOME_KEY;
+                        case '8': return END_KEY;
+                    }
+                }
+            }
+            else {
+                switch(seq[1]) {
+                    case 'A': return ARROW_UP;
+                    case 'B': return ARROW_DOWN;
+                    case 'C': return ARROW_RIGHT;
+                    case 'D': return ARROW_LEFT;
+                    case 'H': return HOME_KEY;
+                    case 'F': return END_KEY;
+                }
+            }
+        }
+        else if(seq[0] == 'O') {
             switch(seq[1]) {
-                case 'A': return ARROW_UP;
-                case 'B': return ARROW_DOWN;
-                case 'C': return ARROW_RIGHT;
-                case 'D': return ARROW_LEFT;
+                case 'H': return HOME_KEY;
+                case 'F': return END_KEY;
             }
         }
 
@@ -360,6 +389,23 @@ void editorProcessKeypress() {
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
             write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
             exit(0);
+            break;
+        case HOME_KEY:
+            E.cx = 0;
+            break;
+        case END_KEY:
+            E.cx = E.screencols - 1;
+            break;
+        // If you’re on a laptop with an Fn key, you may be able to press Fn+↑ and Fn+↓ to simulate pressing 
+        // the Page Up and Page Down keys.
+        case PAGE_UP:
+        case PAGE_DOWN:
+            {
+                int times = E.screenrows;
+                while(times--) {
+                    editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+                }
+            }
             break;
         case ARROW_UP:
         case ARROW_DOWN:

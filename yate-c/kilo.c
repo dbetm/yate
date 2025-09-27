@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
 #include <errno.h>
@@ -44,11 +45,18 @@ enum editorKey {
 
 
 /*** data ***/
+typedef struct errow { // editor row
+    int size;
+    char *chars;
+} erow;
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
     struct termios original_terminal;
     int screenrows;
     int screencols;
+    int numrows;
+    erow row;
+    struct termios orig_termios;
 };
 struct editorConfig E;
 
@@ -241,6 +249,18 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** file I/O ***/
+void editorOpen(char *filename) {
+    char *line = "Hello, world!";
+    ssize_t linelen = 13;
+
+    E.row.size = linelen;
+    E.row.chars = malloc(linelen + 1); // reserve the memory for the message
+    memcpy(E.row.chars, line, linelen); // copy the message to chars
+    E.row.chars[linelen] = '\0';
+    E.numrows = 1; // a line must be displayed now
+}
+
 /*** append buffer ***/
 /* It would be better to do one big write(), to make sure the whole screen updates at once.
 Otherwise there could be small unpredictable pauses between write()’s, which would cause an
@@ -276,28 +296,35 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
     int y;
     for(y = 0; y < E.screenrows; y++) {
-        if(y == E.screenrows / 3) {
-            // write a WELCOME message
-            char welcome[80];
-            /*We use the welcome buffer and snprintf() to interpolate our KILO_VERSION string into 
-            the welcome message*/
-            int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- version %s", KILO_VERSION);
+        if(y >= E.numrows) { // check whether we are currently drawing a row that is part of the text buffer
+            if(y == E.screenrows / 3) {
+                // write a WELCOME message
+                char welcome[80];
+                /*We use the welcome buffer and snprintf() to interpolate our KILO_VERSION string into 
+                the welcome message*/
+                int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- version %s", KILO_VERSION);
 
-            if(welcomelen > E.screencols) welcomelen = E.screencols;
+                if(welcomelen > E.screencols) welcomelen = E.screencols;
 
-            // center the message
-            int padding = (E.screencols - welcomelen) / 2;
-            if(padding) {
-                abAppend(ab, "~", 1);
-                padding--;
+                // center the message
+                int padding = (E.screencols - welcomelen) / 2;
+                if(padding) {
+                    abAppend(ab, "~", 1);
+                    padding--;
+                }
+                while(padding--) abAppend(ab, " ", 1);
+
+                abAppend(ab, welcome, welcomelen);
             }
-            while(padding--) abAppend(ab, " ", 1);
-
-            abAppend(ab, welcome, welcomelen);
+            else {
+                // write(STDOUT_FILENO, "~", 1); // write tilde for each visible row
+                abAppend(ab, "~", 1);
+            }
         }
         else {
-            // write(STDOUT_FILENO, "~", 1); // write tilde for each visible row
-            abAppend(ab, "~", 1);
+            int len = E.row.size;
+            if(len > E.screencols) len = E.screencols; // truncate the line if it's necessary
+            abAppend(ab, E.row.chars, len);
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 
@@ -421,6 +448,7 @@ void editorProcessKeypress() {
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.numrows = 0;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
@@ -428,6 +456,7 @@ void initEditor() {
 int main(int argc, char const *argv[]) {
     enableRawMode();
     initEditor();
+    editorOpen();
 
     char c;
 

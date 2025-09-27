@@ -1,4 +1,10 @@
 /*** includes ***/
+
+// If your compiler complains about getline(), you may need to define a feature test macro
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -251,14 +257,32 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** file I/O ***/
 void editorOpen(char *filename) {
-    char *line = "Hello, world!";
-    ssize_t linelen = 13;
+    FILE *fp = fopen(filename, "r");
+    if(!fp) die("fopen");
 
-    E.row.size = linelen;
-    E.row.chars = malloc(linelen + 1); // reserve the memory for the message
-    memcpy(E.row.chars, line, linelen); // copy the message to chars
-    E.row.chars[linelen] = '\0';
-    E.numrows = 1; // a line must be displayed now
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen;
+    // getline() is useful for reading lines from a file when we don’t know how much memory to allocate
+    // for each line. It takes care of memory management for you. First, we pass it a null line pointer
+    // and a linecap (line capacity) of 0. That makes it allocate new memory for the next line it reads,
+    // and set line to point to the memory, and set linecap to let you know how much memory it allocated.
+    // Its return value is the length of the line it read, or -1 if it’s at the end of the file
+    linelen = getline(&line, &linecap, fp);
+    if(linelen != -1) {
+        // strip off the newline or carriage return at the end of the line before copying it into our erow
+        while(linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
+            linelen--;
+        }
+
+        E.row.size = linelen;
+        E.row.chars = malloc(linelen + 1); // reserve the memory for the message
+        memcpy(E.row.chars, line, linelen); // copy the message to chars
+        E.row.chars[linelen] = '\0';
+        E.numrows = 1; // a line must be displayed now
+    }
+    free(line);
+    fclose(fp);
 }
 
 /*** append buffer ***/
@@ -297,7 +321,7 @@ void editorDrawRows(struct abuf *ab) {
     int y;
     for(y = 0; y < E.screenrows; y++) {
         if(y >= E.numrows) { // check whether we are currently drawing a row that is part of the text buffer
-            if(y == E.screenrows / 3) {
+            if(E.numrows == 0 && y == E.screenrows / 3) {
                 // write a WELCOME message
                 char welcome[80];
                 /*We use the welcome buffer and snprintf() to interpolate our KILO_VERSION string into 
@@ -456,7 +480,10 @@ void initEditor() {
 int main(int argc, char const *argv[]) {
     enableRawMode();
     initEditor();
-    editorOpen();
+
+    if(argc >= 2) {
+        editorOpen(argv[1]);
+    }
 
     char c;
 

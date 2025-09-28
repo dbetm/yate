@@ -18,7 +18,7 @@
 
 /* defines */
 
-#define KILO_VERSION "0.0.1"
+#define YATE_VERSION "0.0.1"
 
 /* The CTRL_KEY macro bitwise-ANDs a character with the value 00011111, in binary. 
 (In C, you generally specify bitmasks using hexadecimal, since C doesn’t have binary literals)
@@ -61,7 +61,7 @@ struct editorConfig {
     int screenrows;
     int screencols;
     int numrows;
-    erow row;
+    erow *row; // must be a pointer in order to save multiple line
     struct termios orig_termios;
 };
 struct editorConfig E;
@@ -255,6 +255,20 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** Row operations ***/
+void editorAppendRow(char *s, size_t len) {
+    E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+    int at = E.numrows;
+
+    E.row[at].size = len;
+    E.row[at].chars = malloc(len + 1); // reserve the memory for the message
+    memcpy(E.row[at].chars, s, len); // copy the message to chars
+    E.row[at].chars[len] = '\0';
+    E.numrows++; // a line must be displayed now
+}
+
+
+
 /*** file I/O ***/
 void editorOpen(char *filename) {
     FILE *fp = fopen(filename, "r");
@@ -268,18 +282,13 @@ void editorOpen(char *filename) {
     // and a linecap (line capacity) of 0. That makes it allocate new memory for the next line it reads,
     // and set line to point to the memory, and set linecap to let you know how much memory it allocated.
     // Its return value is the length of the line it read, or -1 if it’s at the end of the file
-    linelen = getline(&line, &linecap, fp);
-    if(linelen != -1) {
+    while((linelen = getline(&line, &linecap, fp)) != -1) {
         // strip off the newline or carriage return at the end of the line before copying it into our erow
         while(linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
             linelen--;
         }
 
-        E.row.size = linelen;
-        E.row.chars = malloc(linelen + 1); // reserve the memory for the message
-        memcpy(E.row.chars, line, linelen); // copy the message to chars
-        E.row.chars[linelen] = '\0';
-        E.numrows = 1; // a line must be displayed now
+        editorAppendRow(line, linelen);
     }
     free(line);
     fclose(fp);
@@ -324,9 +333,9 @@ void editorDrawRows(struct abuf *ab) {
             if(E.numrows == 0 && y == E.screenrows / 3) {
                 // write a WELCOME message
                 char welcome[80];
-                /*We use the welcome buffer and snprintf() to interpolate our KILO_VERSION string into 
+                /*We use the welcome buffer and snprintf() to interpolate our YATE_VERSION string into 
                 the welcome message*/
-                int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- version %s", KILO_VERSION);
+                int welcomelen = snprintf(welcome, sizeof(welcome), "Yate Editor -- version %s", YATE_VERSION);
 
                 if(welcomelen > E.screencols) welcomelen = E.screencols;
 
@@ -346,9 +355,9 @@ void editorDrawRows(struct abuf *ab) {
             }
         }
         else {
-            int len = E.row.size;
+            int len = E.row[y].size;
             if(len > E.screencols) len = E.screencols; // truncate the line if it's necessary
-            abAppend(ab, E.row.chars, len);
+            abAppend(ab, E.row[y].chars, len);
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 
@@ -473,6 +482,7 @@ void initEditor() {
     E.cx = 0;
     E.cy = 0;
     E.numrows = 0;
+    E.row = NULL;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 

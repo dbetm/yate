@@ -49,3 +49,8 @@ python3 main.py
 ![](yate-python/yate-floating.png)
 
 -------
+
+
+### YATE C
+
+Minimal text editor based in Kilo editor, tutorial from [here](https://viewsourcecode.org/snaptoken/kilo/index.html).

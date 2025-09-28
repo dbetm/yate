@@ -169,3 +169,4 @@ sample-files/*.txt
 
 # compiled from yate-c
 yate-c/kilo
+yate-c/yate

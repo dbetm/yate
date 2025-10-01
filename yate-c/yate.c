@@ -58,6 +58,7 @@ typedef struct errow { // editor row
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
     int rowoff; // keep track of what row of the file the user is currently scrolled to
+    int coloff; // keep track of what column of the file the user is currently scrolled to
     struct termios original_terminal;
     int screenrows;
     int screencols;
@@ -339,6 +340,13 @@ void editorScroll() {
     if(E.cy >= E.rowoff + E.screenrows) {
         E.rowoff = E.cy - E.screenrows + 1;
     }
+    // horizontal scrolling
+    if(E.cx < E.coloff) {
+        E.coloff = E.cx;
+    }
+    if(E.cx >= E.coloff + E.screencols) {
+        E.coloff = E.cx - E.screencols + 1;
+    }
 }
 
 void editorDrawRows(struct abuf *ab) {
@@ -371,9 +379,10 @@ void editorDrawRows(struct abuf *ab) {
             }
         }
         else {
-            int len = E.row[filerow].size;
+            int len = E.row[filerow].size - E.coloff;
+            if(len < 0) len = 0;
             if(len > E.screencols) len = E.screencols; // truncate the line if it's necessary
-            abAppend(ab, E.row[filerow].chars, len);
+            abAppend(ab, &E.row[filerow].chars[E.coloff], len);
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 
@@ -415,9 +424,9 @@ void editorRefreshScreen() {
     // move the cursor to the position stored in E.cx and E.cy.
     char buf[32];
     // We changed the old H command into an H command with arguments, specifying the exact position 
-    // we want the cursor to move to. We add 1 to E.cy and E.cx to convert from 0-indexed values to the 1-indexed 
+    // we want the cursor to move to. We add 1 to (E.cy - offset) and (E.cx - offet) to convert from 0-indexed values to the 1-indexed 
     // values that the terminal uses.
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
     abAppend(&ab, buf, strlen(buf));
 
     // write(STDOUT_FILENO, "\x1b[H", 3);
@@ -431,6 +440,8 @@ void editorRefreshScreen() {
 
 /*** input ***/
 void editorMoveCursor(int key) {
+    erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+
     switch (key) {
         case ARROW_LEFT:
             if(E.cx != 0) {
@@ -438,7 +449,7 @@ void editorMoveCursor(int key) {
             }
             break;
         case ARROW_RIGHT:
-            if(E.cx != E.screencols - 1) {
+            if(row && E.cx < row->size) {
                 E.cx++;
             }
             break;
@@ -500,6 +511,7 @@ void initEditor() {
     E.cy = 0;
     E.numrows = 0;
     E.rowoff = 0; // We initialize it to 0, which means we’ll be scrolled to the top of the file by default.
+    E.coloff = 0; // same idea as the rowoff's initialization
     E.row = NULL;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }

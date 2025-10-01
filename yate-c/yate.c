@@ -57,6 +57,7 @@ typedef struct errow { // editor row
 } erow;
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
+    int rowoff; // keep track of what row of the file the user is currently scrolled to
     struct termios original_terminal;
     int screenrows;
     int screencols;
@@ -326,10 +327,25 @@ void abFree(struct abuf *ab) {
 }
 
 /** output ***/
+void editorScroll() {
+    /* The first if statement checks if the cursor is above the visible window,
+    and if so, scrolls up to where the cursor is. The second if statement checks if the cursor
+    is past the bottom of the visible window, and contains slightly more complicated arithmetic 
+    because E.rowoff refers to what’s at the top of the screen.
+    */
+    if(E.cy < E.rowoff) {
+        E.rowoff = E.cy;
+    }
+    if(E.cy >= E.rowoff + E.screenrows) {
+        E.rowoff = E.cy - E.screenrows + 1;
+    }
+}
+
 void editorDrawRows(struct abuf *ab) {
     int y;
     for(y = 0; y < E.screenrows; y++) {
-        if(y >= E.numrows) { // check whether we are currently drawing a row that is part of the text buffer
+        int filerow = y + E.rowoff;
+        if(filerow >= E.numrows) { // check whether we are currently drawing a row that is part of the text buffer
             if(E.numrows == 0 && y == E.screenrows / 3) {
                 // write a WELCOME message
                 char welcome[80];
@@ -355,9 +371,9 @@ void editorDrawRows(struct abuf *ab) {
             }
         }
         else {
-            int len = E.row[y].size;
+            int len = E.row[filerow].size;
             if(len > E.screencols) len = E.screencols; // truncate the line if it's necessary
-            abAppend(ab, E.row[y].chars, len);
+            abAppend(ab, E.row[filerow].chars, len);
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 
@@ -374,6 +390,7 @@ void editorDrawRows(struct abuf *ab) {
 
 
 void editorRefreshScreen() {
+    editorScroll();
     /*The 4 in our write() call means we are writing 4 bytes out to the terminal. 
     The first byte is \x1b, which is the escape character, or 27 in decimal.
 
@@ -400,7 +417,7 @@ void editorRefreshScreen() {
     // We changed the old H command into an H command with arguments, specifying the exact position 
     // we want the cursor to move to. We add 1 to E.cy and E.cx to convert from 0-indexed values to the 1-indexed 
     // values that the terminal uses.
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
     abAppend(&ab, buf, strlen(buf));
 
     // write(STDOUT_FILENO, "\x1b[H", 3);
@@ -431,7 +448,7 @@ void editorMoveCursor(int key) {
             }
             break;
         case ARROW_DOWN:
-            if(E.cy != E.screenrows - 1) {
+            if(E.cy < E.numrows) {
                 E.cy++;
             }
             break;
@@ -482,6 +499,7 @@ void initEditor() {
     E.cx = 0;
     E.cy = 0;
     E.numrows = 0;
+    E.rowoff = 0; // We initialize it to 0, which means we’ll be scrolled to the top of the file by default.
     E.row = NULL;
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }

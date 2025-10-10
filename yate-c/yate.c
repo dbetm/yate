@@ -19,6 +19,7 @@
 /* defines */
 
 #define YATE_VERSION "0.0.1"
+#define KILO_TAB_STOP 4
 
 /* The CTRL_KEY macro bitwise-ANDs a character with the value 00011111, in binary. 
 (In C, you generally specify bitmasks using hexadecimal, since C doesn’t have binary literals)
@@ -53,7 +54,9 @@ enum editorKey {
 /*** data ***/
 typedef struct errow { // editor row
     int size;
+    int rsize; // size of the contents of render
     char *chars;
+    char *render;
 } erow;
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
@@ -258,6 +261,35 @@ int getWindowSize(int *rows, int *cols) {
 }
 
 /*** Row operations ***/
+void editorUpdateRow(erow *row) {
+    int tabs = 0;
+    int j;
+    /* The maximum number of characters needed for each tab is 4. row->size already counts 1 for each tab, 
+    so we multiply the number of tabs by 3 and add that to row->size to get the maximum amount of memory 
+    we’ll need for the rendered row.
+    */
+    for(j = 0; j < row->size; j++) {
+        if(row->chars[j] == '\t') tabs++;
+    }
+
+    free(row->render);
+    row->render = malloc(row->size + tabs*(KILO_TAB_STOP-1) + 1);
+
+    int idx = 0;
+    // copy the from chars to render
+    for(j = 0; j < row->size; j++) {
+        if(row->chars[j] == '\t') {
+            row->render[idx++] = ' ';
+            while(idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+        }
+        else {
+            row->render[idx++] = row->chars[j];
+        }
+    }
+    row->render[idx] = '\0';
+    row->rsize = idx;
+}
+
 void editorAppendRow(char *s, size_t len) {
     E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
     int at = E.numrows;
@@ -266,6 +298,10 @@ void editorAppendRow(char *s, size_t len) {
     E.row[at].chars = malloc(len + 1); // reserve the memory for the message
     memcpy(E.row[at].chars, s, len); // copy the message to chars
     E.row[at].chars[len] = '\0';
+    E.row[at].rsize = 0;
+    E.row[at].render = NULL;
+    editorUpdateRow(&E.row[at]);
+
     E.numrows++; // a line must be displayed now
 }
 
@@ -379,10 +415,10 @@ void editorDrawRows(struct abuf *ab) {
             }
         }
         else {
-            int len = E.row[filerow].size - E.coloff;
+            int len = E.row[filerow].rsize - E.coloff;
             if(len < 0) len = 0;
             if(len > E.screencols) len = E.screencols; // truncate the line if it's necessary
-            abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+            abAppend(ab, &E.row[filerow].render[E.coloff], len);
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 

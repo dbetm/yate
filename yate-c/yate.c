@@ -60,6 +60,7 @@ typedef struct errow { // editor row
 } erow;
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
+    int rx; // it'll be an index into the render field. If there are no tabs on the current line, then E.rx will be the same as E.cx. If there are tabs, then E.rx will be greater than E.cx
     int rowoff; // keep track of what row of the file the user is currently scrolled to
     int coloff; // keep track of what column of the file the user is currently scrolled to
     struct termios original_terminal;
@@ -261,6 +262,18 @@ int getWindowSize(int *rows, int *cols) {
 }
 
 /*** Row operations ***/
+int editorRowCxToRx(erow *row, int cx) {
+    int rx = 0;
+    for(int j = 0; j < cx; j++) {
+        if(row->chars[j] == '\t') {
+            rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+        }
+        rx++;
+    }
+
+    return rx;
+}
+
 void editorUpdateRow(erow *row) {
     int tabs = 0;
     int j;
@@ -365,6 +378,11 @@ void abFree(struct abuf *ab) {
 
 /** output ***/
 void editorScroll() {
+    E.rx = E.cx;
+    if (E.cy < E.numrows) {
+        E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+    }
+
     /* The first if statement checks if the cursor is above the visible window,
     and if so, scrolls up to where the cursor is. The second if statement checks if the cursor
     is past the bottom of the visible window, and contains slightly more complicated arithmetic 
@@ -377,11 +395,11 @@ void editorScroll() {
         E.rowoff = E.cy - E.screenrows + 1;
     }
     // horizontal scrolling
-    if(E.cx < E.coloff) {
-        E.coloff = E.cx;
+    if(E.rx < E.coloff) {
+        E.coloff = E.rx;
     }
-    if(E.cx >= E.coloff + E.screencols) {
-        E.coloff = E.cx - E.screencols + 1;
+    if(E.rx >= E.coloff + E.screencols) {
+        E.coloff = E.rx - E.screencols + 1;
     }
 }
 
@@ -462,7 +480,7 @@ void editorRefreshScreen() {
     // We changed the old H command into an H command with arguments, specifying the exact position 
     // we want the cursor to move to. We add 1 to (E.cy - offset) and (E.cx - offet) to convert from 0-indexed values to the 1-indexed 
     // values that the terminal uses.
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
     abAppend(&ab, buf, strlen(buf));
 
     // write(STDOUT_FILENO, "\x1b[H", 3);
@@ -559,6 +577,7 @@ void editorProcessKeypress() {
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.rx = 0;
     E.numrows = 0;
     E.rowoff = 0; // We initialize it to 0, which means we’ll be scrolled to the top of the file by default.
     E.coloff = 0; // same idea as the rowoff's initialization

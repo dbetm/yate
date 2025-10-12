@@ -68,6 +68,7 @@ struct editorConfig {
     int screencols;
     int numrows;
     erow *row; // must be a pointer in order to save multiple line
+    char *filename;
     struct termios orig_termios;
 };
 struct editorConfig E;
@@ -322,6 +323,10 @@ void editorAppendRow(char *s, size_t len) {
 
 /*** file I/O ***/
 void editorOpen(char *filename) {
+    free(E.filename);
+    // makes a copy of the given string, allocating the required memory and assuming you will free() that memory
+    E.filename = strdup(filename);
+
     FILE *fp = fopen(filename, "r");
     if(!fp) die("fopen");
 
@@ -445,10 +450,48 @@ void editorDrawRows(struct abuf *ab) {
         */
         abAppend(ab, "\x1b[K", 3); // clear each line as we redraw it
         // and for all except the last line, print \r\n
-        if(y < E.screenrows - 1) {
-            abAppend(ab, "\r\n", 2);
+        // if(y < E.screenrows - 1) {
+        //     abAppend(ab, "\r\n", 2);
+        // }
+
+        abAppend(ab, "\r\n", 2);
+    }
+}
+
+
+void editorDrawStatusBar(struct abug *ab) {
+    /*To make the status bar stand out, we’re going to display it with inverted colors: 
+    black text on a white background. The escape sequence <esc>[7m switches to inverted colors, 
+    and <esc>[m switches back to normal formatting.
+
+    The m command (Select Graphic Rendition) causes the text printed after it to be printed 
+    with various possible attributes including normal (0), bold (1), underscore (4), blink (5), and inverted colors (7). 
+    For example, you could specify all of these attributes using the command <esc>[1;4;5;7m.
+    */
+    abAppend(ab, "\x1b[7m", 4);
+
+    char status[80], rstatus[80];
+    // display max 20 chars from filename
+    int len = snprintf(
+        status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No name]", E.numrows
+    );
+    // print the actual row position in the file
+    int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numrows);
+
+    if(len > E.screencols) len = E.screencols;
+    abAppend(ab, status, len);
+
+    while(len < E.screencols) {
+        if(E.screencols - len == rlen) {
+            abAppend(ab, rstatus, rlen);
+            break;
+        }
+        else {
+            abAppend(ab, " ", 1);
+            len++;
         }
     }
+    abAppend(ab, "\x1b[m", 3);
 }
 
 
@@ -474,6 +517,7 @@ void editorRefreshScreen() {
     // abAppend(&ab, "\x1b[2J", 4); // don't clear full screen, instead clear each line as we redraw it
     abAppend(&ab, "\x1b[H", 3);
     editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
 
     // move the cursor to the position stored in E.cx and E.cy.
     char buf[32];
@@ -593,7 +637,12 @@ void initEditor() {
     E.rowoff = 0; // We initialize it to 0, which means we’ll be scrolled to the top of the file by default.
     E.coloff = 0; // same idea as the rowoff's initialization
     E.row = NULL;
+    E.filename = NULL;
+
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+
+    // don't draw nothing in the last line, reserve the last row for the status bar
+    E.screenrows -= 1;
 }
 
 

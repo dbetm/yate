@@ -7,11 +7,13 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -69,6 +71,8 @@ struct editorConfig {
     int numrows;
     erow *row; // must be a pointer in order to save multiple line
     char *filename;
+    char statusmsg[80]; // messages to the user, and prompting the user for input when doing a search, for example
+    time_t statusmsg_time;
     struct termios orig_termios;
 };
 struct editorConfig E;
@@ -492,6 +496,18 @@ void editorDrawStatusBar(struct abug *ab) {
         }
     }
     abAppend(ab, "\x1b[m", 3);
+    // Space for status message
+    abAppend(ab, "\r\n", 2);
+}
+
+void editorDrawMessageBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[K", 3); // clear the message bar with the <esc>[K escape sequence
+    int msglen = strlen(E.statusmsg);
+    if(msglen > E.screencols) msglen = E.screencols;
+    // refresh only if the message is less than 5 seconds old
+    if(msglen && time(NULL) - E.statusmsg_time < 5) {
+        abAppend(ab, E.statusmsg, msglen);
+    }
 }
 
 
@@ -518,6 +534,7 @@ void editorRefreshScreen() {
     abAppend(&ab, "\x1b[H", 3);
     editorDrawRows(&ab);
     editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     // move the cursor to the position stored in E.cx and E.cy.
     char buf[32];
@@ -534,6 +551,25 @@ void editorRefreshScreen() {
     // write the full buffer
     write(STDOUT_FILENO, ab.b, ab.len);
     abFree(&ab);
+}
+
+void editorSetStatusMesage(const char *fmt, ...) {
+    /* The ... argument makes it a variadic function (it can take any number of arguments)
+    C’s way of dealing with these arguments is by having you call va_start() and va_end() on a value of type va_list. 
+    The last argument before the ... (in this case, fmt) must be passed to va_start(), 
+    so that the address of the next arguments is known. 
+
+    Then, between the va_start() and va_end() calls, you would call va_arg() and pass it the type of the next argument 
+    (which you usually get from the given format string) and it would return the value of that argument. 
+    In this case, we pass fmt and ap to vsnprintf() and it takes care of reading the format string and calling va_arg() 
+    to get each argument.
+    */
+    va_list ap;
+    va_start(ap, fmt);
+    // vsnprintf() helps us make our own printf()-style function. We store the resulting string in E.statusmsg
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL); //  set E.statusmsg_time to the current time, which can be gotten by passing NULL to time()
 }
 
 /*** input ***/
@@ -638,11 +674,13 @@ void initEditor() {
     E.coloff = 0; // same idea as the rowoff's initialization
     E.row = NULL;
     E.filename = NULL;
+    E.statusmsg[0] = '\0'; // empty character
+    E.statusmsg_time = 0;
 
     if(getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
-    // don't draw nothing in the last line, reserve the last row for the status bar
-    E.screenrows -= 1;
+    // don't draw nothing in the last two lines, reserve the last rows for the status bar and status message
+    E.screenrows -= 2;
 }
 
 
@@ -653,6 +691,8 @@ int main(int argc, char const *argv[]) {
     if(argc >= 2) {
         editorOpen(argv[1]);
     }
+
+    editorSetStatusMesage("HELP: Ctrl-Q = quit");
 
     char c;
 

@@ -324,6 +324,30 @@ void editorAppendRow(char *s, size_t len) {
 }
 
 
+void editorRowInsertChar(erow *row, int at, int c) {
+    if(at < 0 || at > row->size) at = row->size;
+    row->chars = realloc(row->chars, row->size + 2); // add 2 because we also have to make room for the null byte
+    // It is like memcpy(), but is safe to use when the source and destination arrays overlap.
+    // dest, origin and num_bytes (size of the block to move, including null char at the end)
+    memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+    /* Use memmove() to make room for the new character. 
+    We increment the size of the chars array, and then actually assign the character to its position in the array.
+    */
+    row->size++;
+    row->chars[at] = c;
+    editorUpdateRow(row);
+}
+
+
+/*** Editor Operations ***/
+void editorInsertChar(int c) {
+    if(E.cy == E.numrows) { // if we are at the end of the file, add an extra row to write there
+        editorAppendRow("", 0);
+    }
+    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    E.cx++;
+}
+
 
 /*** file I/O ***/
 void editorOpen(char *filename) {
@@ -659,6 +683,9 @@ void editorProcessKeypress() {
         case ARROW_LEFT:
         case ARROW_RIGHT:
             editorMoveCursor(c);
+            break;
+        default:
+            editorInsertChar(c);
             break;
     }
 }

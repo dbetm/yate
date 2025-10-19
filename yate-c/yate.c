@@ -41,6 +41,7 @@ Example:
 /* By setting the first constant in the enum to 1000, the rest of the constants get incrementing values 
 of 1001, 1002, 1003, and so on. */
 enum editorKey {
+    BACKSPACE = 127, // ASCII value, since we can't represent it in C
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
@@ -644,6 +645,9 @@ void editorProcessKeypress() {
     int c = editorReadKey();
 
     switch (c) {
+        case '\r': // enter key
+            /* TODO */
+            break;
         case CTRL_KEY('q'):
             // reset screen
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
@@ -658,6 +662,11 @@ void editorProcessKeypress() {
                 E.cx = E.row[E.cy].size;
             }
             E.cx = E.screencols - 1;
+            break;
+        case BACKSPACE:
+        case CTRL_KEY('h'): // it sends the control code 8, which is originally what the Backspace character would send back in the day.
+        case DEL_KEY:
+            /* TODO */
             break;
         // If you’re on a laptop with an Fn key, you may be able to press Fn+↑ and Fn+↓ to simulate pressing 
         // the Page Up and Page Down keys.
@@ -683,6 +692,9 @@ void editorProcessKeypress() {
         case ARROW_LEFT:
         case ARROW_RIGHT:
             editorMoveCursor(c);
+            break;
+        case CTRL_KEY('l'): // Ctrl-L is traditionally used to refresh the screen in terminal programs
+        case '\x1b': // gnore the Escape key because there are many key escape sequences that we aren’t handling (such as the F1–F12 keys),
             break;
         default:
             editorInsertChar(c);

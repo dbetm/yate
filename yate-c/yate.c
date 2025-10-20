@@ -6,6 +6,8 @@
 #define _GNU_SOURCE
 
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -15,7 +17,6 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
-#include <errno.h>
 
 
 /* defines */
@@ -77,6 +78,9 @@ struct editorConfig {
     struct termios orig_termios;
 };
 struct editorConfig E;
+
+/*** prototypes ***/
+void editorSetStatusMessage(const char *fmt, ...);
 
 /*** terminal ***/
 void die(const char *s) {
@@ -351,6 +355,62 @@ void editorInsertChar(int c) {
 
 
 /*** file I/O ***/
+char *editorRowsToString(int *buflen) {
+    int totlen = 0;
+    for (int j = 0; j < E.numrows; j++) {
+        totlen += E.row[j].size + 1; // plus 1 since we count the end of line after each lines
+    }
+
+    *buflen = totlen;
+    char *buf = malloc(totlen);
+    char *pointer = buf;
+
+    for (int j = 0; j < E. numrows; j++) {
+        /*memcpy() the contents of each row to the end of the buffer, appending a newline character after each row.
+        */
+        memcpy(pointer, E.row[j].chars, E.row[j].size);
+        pointer += E.row[j].size;
+        *pointer = '\n';
+        pointer++;
+    }
+
+    return buf;
+}
+
+
+void editorSave() {
+    if(E.filename == NULL) return;
+
+    int len;
+    char *buf = editorRowsToString(&len);
+
+    /* We want to create a new file if it doesn’t already exist (O_CREAT), and we want to open it for reading and writing (O_RDWR).
+     * Because we used the O_CREAT flag, we have to pass an extra argument containing the mode (the permissions) the new file
+     * should have. 0644 is the standard permissions you usually want for text files. It gives the owner of the file permission
+     * to read and write the file, and everyone else only gets permission to read the file.
+    */
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+    /* sets the file’s size to the specified length. If the file is larger than that, it will cut off any data
+    at the end of the file to make it that length. If the file is shorter, it will add 0 bytes at the end to
+    make it that length.
+    */
+    if (fd != -1) {
+        if(ftruncate(fd, len) != -1) {
+            if(write(fd, buf, len) == len) {
+                close(fd);
+                free(buf);
+                editorSetStatusMessage("%d bytes written to disk", len);
+                return;
+            }
+        }
+        close(fd);
+    }
+
+    free(buf);
+    editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+}
+
+
 void editorOpen(char *filename) {
     free(E.filename);
     // makes a copy of the given string, allocating the required memory and assuming you will free() that memory
@@ -578,7 +638,7 @@ void editorRefreshScreen() {
     abFree(&ab);
 }
 
-void editorSetStatusMesage(const char *fmt, ...) {
+void editorSetStatusMessage(const char *fmt, ...) {
     /* The ... argument makes it a variadic function (it can take any number of arguments)
     C’s way of dealing with these arguments is by having you call va_start() and va_end() on a value of type va_list. 
     The last argument before the ... (in this case, fmt) must be passed to va_start(), 
@@ -653,6 +713,9 @@ void editorProcessKeypress() {
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
             write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
             exit(0);
+            break;
+        case CTRL_KEY('s'):
+            editorSave();
             break;
         case HOME_KEY:
             E.cx = 0;
@@ -731,7 +794,7 @@ int main(int argc, char const *argv[]) {
         editorOpen(argv[1]);
     }
 
-    editorSetStatusMesage("HELP: Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-S - save | Ctrl-Q = quit");
 
     char c;
 

@@ -72,6 +72,7 @@ struct editorConfig {
     int screencols;
     int numrows;
     erow *row; // must be a pointer in order to save multiple line
+    int dirty; // flag, we call a text buffer “dirty” if it has been modified since opening or saving the file
     char *filename;
     char statusmsg[80]; // messages to the user, and prompting the user for input when doing a search, for example
     time_t statusmsg_time;
@@ -326,6 +327,7 @@ void editorAppendRow(char *s, size_t len) {
     editorUpdateRow(&E.row[at]);
 
     E.numrows++; // a line must be displayed now
+    E.dirty++;
 }
 
 
@@ -341,6 +343,8 @@ void editorRowInsertChar(erow *row, int at, int c) {
     row->size++;
     row->chars[at] = c;
     editorUpdateRow(row);
+
+    E.dirty++;
 }
 
 
@@ -399,6 +403,7 @@ void editorSave() {
             if(write(fd, buf, len) == len) {
                 close(fd);
                 free(buf);
+                E.dirty = 0;
                 editorSetStatusMessage("%d bytes written to disk", len);
                 return;
             }
@@ -437,6 +442,8 @@ void editorOpen(char *filename) {
     }
     free(line);
     fclose(fp);
+
+    E.dirty = 0;
 }
 
 /*** append buffer ***/
@@ -561,9 +568,9 @@ void editorDrawStatusBar(struct abug *ab) {
 
     char status[80], rstatus[80];
     // display max 20 chars from filename
-    int len = snprintf(
-        status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No name]", E.numrows
-    );
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
+    E.filename ? E.filename : "[No Name]", E.numrows,
+    E.dirty ? "(modified)" : "");
     // print the actual row position in the file
     int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numrows);
 
@@ -775,6 +782,7 @@ void initEditor() {
     E.rowoff = 0; // We initialize it to 0, which means we’ll be scrolled to the top of the file by default.
     E.coloff = 0; // same idea as the rowoff's initialization
     E.row = NULL;
+    E.dirty = 0;
     E.filename = NULL;
     E.statusmsg[0] = '\0'; // empty character
     E.statusmsg_time = 0;

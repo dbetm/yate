@@ -23,6 +23,7 @@
 
 #define YATE_VERSION "0.0.1"
 #define KILO_TAB_STOP 4
+#define KILO_QUIT_TIMES 3
 
 /* The CTRL_KEY macro bitwise-ANDs a character with the value 00011111, in binary. 
 (In C, you generally specify bitmasks using hexadecimal, since C doesn’t have binary literals)
@@ -708,6 +709,8 @@ void editorMoveCursor(int key) {
 
 
 void editorProcessKeypress() {
+    static int quit_times = KILO_QUIT_TIMES;
+
     /* waits for a keypress, and then handles it. */
     int c = editorReadKey();
 
@@ -716,6 +719,14 @@ void editorProcessKeypress() {
             /* TODO */
             break;
         case CTRL_KEY('q'):
+            // quit confirmation
+            if(E.dirty && quit_times > 0) {
+                editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+                    "Press Ctrl-Q %d more times to quit.", quit_times
+                );
+                quit_times--;
+                return;
+            }
             // reset screen
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear scren
             write(STDERR_FILENO, "\x1b[H", 3); // relocate cursor position
@@ -770,6 +781,8 @@ void editorProcessKeypress() {
             editorInsertChar(c);
             break;
     }
+
+    quit_times = KILO_QUIT_TIMES;
 }
 
 

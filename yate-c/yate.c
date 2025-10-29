@@ -331,6 +331,20 @@ void editorAppendRow(char *s, size_t len) {
     E.dirty++;
 }
 
+void editorFreeRow(erow *row) {
+    free(row->render);
+    free(row->chars);
+}
+
+void editorDelRow(int at) {
+    if(at < 0 || at >= E.numrows) return;
+    editorFreeRow(&E.row[at]);
+    // dest, origin and num_bytes (size of the block to move, including null char at the end)
+    memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+    E.numrows--;
+    E.dirty++;
+}
+
 
 void editorRowInsertChar(erow *row, int at, int c) {
     if(at < 0 || at > row->size) at = row->size;
@@ -348,6 +362,27 @@ void editorRowInsertChar(erow *row, int at, int c) {
     E.dirty++;
 }
 
+void editorRowAppendString(erow *row, char *s, size_t len) {
+    row->chars = realloc(row->chars, row->size + len + 1); // reserve space of the new s (string) + null byte
+    memcpy(&row->chars[row->size], s, len); // copy s to the end of chars
+    row->size += len; // update new len
+    row->chars[row->size] = '\0'; // add null byte
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
+
+void editorRowDelChar(erow *row, int at) {
+    /* Deletes a character in a row*/
+    if(at < 0 || at >= row->size) return;
+    // Use memmove() to overwrite the deleted character with the characters that come after it (the null byte at the end gets included)
+    // dest, origin and num_bytes
+    memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+    row->size--;
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
 
 /*** Editor Operations ***/
 void editorInsertChar(int c) {
@@ -356,6 +391,29 @@ void editorInsertChar(int c) {
     }
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
+}
+
+void editorDelChar() {
+    /* If the cursor’s past the end of the file, then there is nothing to delete, and we return.
+    Otherwise, we get the erow the cursor is on, and if there is a character to the left 
+    of the cursor, we delete it and move the cursor one to the left.
+    */
+    if(E.cy == E.numrows) return;
+    // unable to get "up" the current row
+    if(E.cx == 0 && E.cy == 0) return; 
+
+    erow *row = &E.row[E.cy];
+    if(E.cx > 0) {
+        editorRowDelChar(row, E.cx - 1);
+        E.cx--;
+    }
+    // beggining of the line, we want to get "up" the row and concat the content with the previous one
+    else {
+        E.cx = E.row[E.cy - 1].size;
+        editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+        editorDelRow(E.cy);
+        E.cy--;
+    }
 }
 
 
@@ -747,7 +805,8 @@ void editorProcessKeypress() {
         case BACKSPACE:
         case CTRL_KEY('h'): // it sends the control code 8, which is originally what the Backspace character would send back in the day.
         case DEL_KEY:
-            /* TODO */
+            if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
+            editorDelChar();
             break;
         // If you’re on a laptop with an Fn key, you may be able to press Fn+↑ and Fn+↓ to simulate pressing 
         // the Page Up and Page Down keys.

@@ -315,9 +315,12 @@ void editorUpdateRow(erow *row) {
     row->rsize = idx;
 }
 
-void editorAppendRow(char *s, size_t len) {
+void editorInsertRow(int at, char *s, size_t len) {
+    if(at < 0 || at > E.numrows) return;
+
     E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
-    int at = E.numrows;
+    // dest, origin and num_bytes (size of the block to move)
+    memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
 
     E.row[at].size = len;
     E.row[at].chars = malloc(len + 1); // reserve the memory for the message
@@ -387,11 +390,29 @@ void editorRowDelChar(erow *row, int at) {
 /*** Editor Operations ***/
 void editorInsertChar(int c) {
     if(E.cy == E.numrows) { // if we are at the end of the file, add an extra row to write there
-        editorAppendRow("", 0);
+        editorInsertRow(E.numrows, "", 0);
     }
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
 }
+
+
+void editorInsertNewLine() {
+    if(E.cx == 0) {
+        editorInsertRow(E.cy, "", 0);
+    }
+    else {
+        erow *row = &E.row[E.cy];
+        editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+        row = &E.row[E.cy];
+        row->size = E.cx;
+        row->chars[row->size] = '\0';
+        editorUpdateRow(row);
+    }
+    E.cy++;
+    E.cx = 0;
+}
+
 
 void editorDelChar() {
     /* If the cursor’s past the end of the file, then there is nothing to delete, and we return.
@@ -497,7 +518,7 @@ void editorOpen(char *filename) {
             linelen--;
         }
 
-        editorAppendRow(line, linelen);
+        editorInsertRow(E.numrows, line, linelen);
     }
     free(line);
     fclose(fp);
@@ -774,7 +795,7 @@ void editorProcessKeypress() {
 
     switch (c) {
         case '\r': // enter key
-            /* TODO */
+            editorInsertNewLine();
             break;
         case CTRL_KEY('q'):
             // quit confirmation

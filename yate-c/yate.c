@@ -277,6 +277,7 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** Row operations ***/
 int editorRowCxToRx(erow *row, int cx) {
+    // convert char position to render position
     int rx = 0;
     for(int j = 0; j < cx; j++) {
         if(row->chars[j] == '\t') {
@@ -286,6 +287,23 @@ int editorRowCxToRx(erow *row, int cx) {
     }
 
     return rx;
+}
+
+int editorRowRxToCx(erow *row, int rx) {
+    // convert render position in the row to char position
+    int cur_rx = 0;
+    int cx;
+
+    for(cx = 0; cx < row->size; cx++) {
+        if(row->chars[cx] == '\t') {
+            cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+        }
+        cur_rx++;
+
+        if(cur_rx > rx) return cx;
+    }
+    // just in case the caller provided an rx that’s out of range, which shouldn’t happen.
+    return cx;
 }
 
 void editorUpdateRow(erow *row) {
@@ -501,6 +519,29 @@ void editorSave() {
 
     free(buf);
     editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+}
+
+/*** find ***/
+void editorFind() {
+    char *query = editorPrompt("Search: %s (ESC to cancel)");
+    if(query == NULL) return;
+
+    int i;
+    for (i = 0; i < E.numrows; i++){
+        erow *row = &E.row[i];
+        char *match = strstr(row->render, query); // check if query is a substring of the current row
+        if(match) {
+            E.cy = i;
+            E.cx = editorRowRxToCx(row, match - row->render);
+            /***  we set E.rowoff so that we are scrolled to the very bottom of the file, which will cause 
+             * editorScroll() to scroll upwards at the next screen refresh so that the matching line will be at 
+             * the very top of the screen 
+            ***/
+            E.rowoff = E.numrows;
+            break;
+        }
+    }
+    free(query);
 }
 
 
@@ -874,6 +915,9 @@ void editorProcessKeypress() {
             }
             E.cx = E.screencols - 1;
             break;
+        case CTRL_KEY('f'):
+            editorFind();
+            break;
         case BACKSPACE:
         case CTRL_KEY('h'): // it sends the control code 8, which is originally what the Backspace character would send back in the day.
         case DEL_KEY:
@@ -946,7 +990,7 @@ int main(int argc, char const *argv[]) {
         editorOpen(argv[1]);
     }
 
-    editorSetStatusMessage("HELP: Ctrl-S - save | Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
 
     char c;
 

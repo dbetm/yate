@@ -84,7 +84,7 @@ struct editorConfig E;
 /*** prototypes ***/
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
-char *editorPrompt(char *prompt);
+char *editorPrompt(char *prompt, void (*callback)(char *, int));
 
 /*** terminal ***/
 void die(const char *s) {
@@ -484,7 +484,7 @@ char *editorRowsToString(int *buflen) {
 
 void editorSave() {
     if(E.filename == NULL) {
-        E.filename = editorPrompt("Save as: %s (ESC to cancel)");
+        E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
         if(E.filename == NULL) {
             editorSetStatusMessage("Save aborted");
             return;
@@ -522,9 +522,10 @@ void editorSave() {
 }
 
 /*** find ***/
-void editorFind() {
-    char *query = editorPrompt("Search: %s (ESC to cancel)");
-    if(query == NULL) return;
+void editorFindCallback(char *query, int key) {
+    if(key == '\r' || key == '\x1b') {
+        return;
+    }
 
     int i;
     for (i = 0; i < E.numrows; i++){
@@ -541,7 +542,12 @@ void editorFind() {
             break;
         }
     }
-    free(query);
+}
+
+void editorFind() {
+    char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
+
+    if(query) free(query);
 }
 
 
@@ -794,7 +800,7 @@ void editorSetStatusMessage(const char *fmt, ...) {
 }
 
 /*** input ***/
-char *editorPrompt(char *prompt) {
+char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize); // The user’s input is stored in buf
 
@@ -812,6 +818,7 @@ char *editorPrompt(char *prompt) {
         // user can cancel the operation pressing the scape key
         else if(c == '\x1b') { // in Bash on Windows, you must press 3 times
             editorSetStatusMessage("");
+            if(callback) callback(buf, c);
             free(buf);
             return NULL;
         }
@@ -819,6 +826,7 @@ char *editorPrompt(char *prompt) {
             // When the user presses Enter, and their input is not empty, the status message is cleared and their input is returned
             if(buflen != 0) {
                 editorSetStatusMessage("");
+                if(callback) callback(buf, c);
                 return buf;
             }
         }
@@ -833,6 +841,8 @@ char *editorPrompt(char *prompt) {
             buf[buflen++] = c;
             buf[buflen] = '\0';
         }
+
+        if (callback) callback(buf, c);
     }
 }
 

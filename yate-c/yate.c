@@ -523,16 +523,37 @@ void editorSave() {
 
 /*** find ***/
 void editorFindCallback(char *query, int key) {
+    // declare variables to support advance to the next or previous match in the file
+    static int last_match = -1; // contain the index of the row that the last match was on, or -1 if there was no last match
+    static int direction = 1; // store the direction of the search: 1 for searching forward, and -1 for searching backward.
+
     if(key == '\r' || key == '\x1b') {
+        last_match = -1;
+        direction = 1;
         return;
     }
+    else if(key == ARROW_RIGHT || key == ARROW_DOWN) direction = 1;
+    else if(key == ARROW_LEFT  || key == ARROW_UP) direction = -1;
+    else {
+        last_match = -1;
+        direction = 1;
+    }
+
+    if(last_match == -1) direction = 1;
+    int current = last_match; // index of the current row we are searching
 
     int i;
-    for (i = 0; i < E.numrows; i++){
-        erow *row = &E.row[i];
+    for (i = 0; i < E.numrows; i++) {
+        current += direction;
+        // wrap around
+        if(current == -1) current = E.numrows - 1;
+        else if(current == E.numrows) current = 0;
+
+        erow *row = &E.row[current];
         char *match = strstr(row->render, query); // check if query is a substring of the current row
         if(match) {
-            E.cy = i;
+            last_match = current;
+            E.cy = current;
             E.cx = editorRowRxToCx(row, match - row->render);
             /***  we set E.rowoff so that we are scrolled to the very bottom of the file, which will cause 
              * editorScroll() to scroll upwards at the next screen refresh so that the matching line will be at 
@@ -552,7 +573,7 @@ void editorFind() {
     int saved_coloff = E.coloff;
     int saved_rowoff = E.rowoff;
 
-    char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
+    char *query = editorPrompt("Search: %s (Use ESC/Arrows/Enter)", editorFindCallback);
 
     if(query) {
         free(query);

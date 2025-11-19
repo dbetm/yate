@@ -545,9 +545,24 @@ void editorFindCallback(char *query, int key) {
 }
 
 void editorFind() {
+    /*** When the user presses Escape to cancel a search, we want the cursor to go back to where it was when 
+     * they started the search*/
+    int saved_cx = E.cx;
+    int saved_cy = E.cy;
+    int saved_coloff = E.coloff;
+    int saved_rowoff = E.rowoff;
+
     char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
 
-    if(query) free(query);
+    if(query) {
+        free(query);
+    }
+    else {
+        E.cx = saved_cx;
+        E.cy = saved_cy;
+        E.coloff = saved_coloff;
+        E.rowoff = saved_rowoff;
+    }
 }
 
 

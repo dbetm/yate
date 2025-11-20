@@ -708,7 +708,20 @@ void editorDrawRows(struct abuf *ab) {
             int len = E.row[filerow].rsize - E.coloff;
             if(len < 0) len = 0;
             if(len > E.screencols) len = E.screencols; // truncate the line if it's necessary
-            abAppend(ab, &E.row[filerow].render[E.coloff], len);
+            
+            // color red digits
+            char *c = &E.row[filerow].render[E.coloff];
+            int j;
+            for(j = 0; j < len; j++) {
+                if(isdigit(c[j])) {
+                    abAppend(ab, "\x1b[31m", 5); // turn on red color
+                    abAppend(ab, &c[j], 1); // actual digit
+                    abAppend(ab, "\x1b[39m", 5); // reset to default text color
+                }
+                else {
+                    abAppend(ab, &c[j], 1);
+                }
+            }
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 

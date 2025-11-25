@@ -55,6 +55,10 @@ enum editorKey {
     PAGE_DOWN // escape sequence: <esc>[6~
 };
 
+enum editorHighlight { // possible values that the highlight array can contain.
+    HL_NORMAL = 0,
+    HL_NUMBER
+};
 
 /*** data ***/
 typedef struct errow { // editor row
@@ -62,6 +66,7 @@ typedef struct errow { // editor row
     int rsize; // size of the contents of render
     char *chars;
     char *render;
+    unsigned char *highlight; // array to store the highlighting of each line
 } erow;
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
@@ -275,6 +280,30 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** syntax highlighting ***/
+void editorUpdateSyntax(erow *row) {
+    /*** go through the characters of an erow and highlight them by setting each value in the highlight array. ***/
+    row->highlight = realloc(row->highlight, row->rsize);
+    // et all characters to HL_NORMAL by default, before looping through the characters and setting the digits to HL_NUMBER. 
+    memset(row->highlight, HL_NORMAL, row->rsize);
+
+    for (int i = 0; i < row->rsize; i++){
+        if(isdigit(row->render[i])) {
+            row->highlight[i] = HL_NUMBER;
+        }
+    }
+}
+
+int editorSyntaxToColor(int hl) {
+    /***maps values in hl to the actual ANSI color codes we want to draw them with.*/
+    switch (hl) {
+        case HL_NUMBER:
+            return 31; // red
+        default:
+            return 37; // white
+    }
+}
+
 /*** Row operations ***/
 int editorRowCxToRx(erow *row, int cx) {
     // convert char position to render position
@@ -333,6 +362,8 @@ void editorUpdateRow(erow *row) {
     }
     row->render[idx] = '\0';
     row->rsize = idx;
+
+    editorUpdateSyntax(row);
 }
 
 void editorInsertRow(int at, char *s, size_t len) {
@@ -348,6 +379,7 @@ void editorInsertRow(int at, char *s, size_t len) {
     E.row[at].chars[len] = '\0';
     E.row[at].rsize = 0;
     E.row[at].render = NULL;
+    E.row[at].highlight = NULL;
     editorUpdateRow(&E.row[at]);
 
     E.numrows++; // a line must be displayed now
@@ -357,6 +389,7 @@ void editorInsertRow(int at, char *s, size_t len) {
 void editorFreeRow(erow *row) {
     free(row->render);
     free(row->chars);
+    free(row->highlight);
 }
 
 void editorDelRow(int at) {
@@ -711,17 +744,29 @@ void editorDrawRows(struct abuf *ab) {
             
             // color red digits
             char *c = &E.row[filerow].render[E.coloff];
+            unsigned char *hl = &E.row[filerow].highlight[E.coloff]; // to the slice of the hightligh array that corresponds to the slice of render that we are printing
+            int current_color = -1; // track current char to minimize printing scape sequences
             int j;
             for(j = 0; j < len; j++) {
-                if(isdigit(c[j])) {
-                    abAppend(ab, "\x1b[31m", 5); // turn on red color
-                    abAppend(ab, &c[j], 1); // actual digit
-                    abAppend(ab, "\x1b[39m", 5); // reset to default text color
+                if(hl[j] == HL_NORMAL) {
+                    if(current_color != -1) {
+                        abAppend(ab, "\x1b[39m", 5);
+                        current_color = -1;
+                    }
+                    abAppend(ab, &c[j], 1); // actual character
                 }
                 else {
-                    abAppend(ab, &c[j], 1);
+                    int color = editorSyntaxToColor(hl[j]);
+                    if(color != current_color) {
+                        current_color = color;
+                        char buf[16];
+                        int color_len = snprintf(buf, sizeof(buf), "\x1b[%dm", color); // write the escape sequence into a buffer
+                        abAppend(ab, buf, color_len);
+                    }
+                    abAppend(ab, &c[j], 1); // actual digit
                 }
             }
+            abAppend(ab, "\x1b[39m", 5); // reset to default text color
         }
         /* The K command (Erase In Line) erases part of the current line. 
         Its argument is analogous to the J command’s argument: 2 erases the whole line, 

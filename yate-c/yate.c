@@ -57,7 +57,8 @@ enum editorKey {
 
 enum editorHighlight { // possible values that the highlight array can contain.
     HL_NORMAL = 0,
-    HL_NUMBER
+    HL_NUMBER,
+    HL_MATCH
 };
 
 /*** data ***/
@@ -299,6 +300,8 @@ int editorSyntaxToColor(int hl) {
     switch (hl) {
         case HL_NUMBER:
             return 31; // red
+        case HL_MATCH:
+            return 34; // blue
         default:
             return 37; // white
     }
@@ -560,6 +563,15 @@ void editorFindCallback(char *query, int key) {
     static int last_match = -1; // contain the index of the row that the last match was on, or -1 if there was no last match
     static int direction = 1; // store the direction of the search: 1 for searching forward, and -1 for searching backward.
 
+    static int saved_hl_line;
+    static char *saved_hl = NULL;
+
+    if(saved_hl) {
+        memcpy(E.row[saved_hl_line].highlight, saved_hl, E.row[saved_hl_line].rsize);
+        free(saved_hl);
+        saved_hl = NULL;
+    }
+
     if(key == '\r' || key == '\x1b') {
         last_match = -1;
         direction = 1;
@@ -593,6 +605,13 @@ void editorFindCallback(char *query, int key) {
              * the very top of the screen 
             ***/
             E.rowoff = E.numrows;
+            // save current highlight
+            saved_hl_line = current;
+            saved_hl = malloc(row->rsize);
+            memcpy(saved_hl, row->highlight, row->rsize);
+
+            // highlight match search
+            memset(&row->highlight[match - row->render], HL_MATCH, strlen(query));
             break;
         }
     }

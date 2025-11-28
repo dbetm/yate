@@ -282,16 +282,40 @@ int getWindowSize(int *rows, int *cols) {
 }
 
 /*** syntax highlighting ***/
+int is_separator(int c) {
+    /* Takes a character and returns true if it’s considered a separator character.
+
+    strchr() comes from <string.h>. It looks for the first occurrence of a character in a string, 
+    and returns a pointer to the matching character in the string. If the string doesn’t contain the character, 
+    strchr() returns NULL.
+    */
+    return isspace(c) || c == '\0' || strchr(",.()+-/*=~%<>[];", c) != NULL;
+}
+
 void editorUpdateSyntax(erow *row) {
     /*** go through the characters of an erow and highlight them by setting each value in the highlight array. ***/
     row->highlight = realloc(row->highlight, row->rsize);
     // et all characters to HL_NORMAL by default, before looping through the characters and setting the digits to HL_NUMBER. 
     memset(row->highlight, HL_NORMAL, row->rsize);
 
-    for (int i = 0; i < row->rsize; i++){
-        if(isdigit(row->render[i])) {
+    int prev_separator = 1; // we consider the beginning of the line to be a separator
+
+    int i = 0;
+    while(i < row->rsize) {
+        char c = row->render[i];
+        unsigned char prev_hl = (i > 0) ? row->highlight[i - 1] : HL_NORMAL;
+
+        if((isdigit(c) && (prev_separator || prev_hl == HL_NUMBER)) 
+            || (c == '.' && prev_hl == HL_NUMBER)
+        ) {
             row->highlight[i] = HL_NUMBER;
+            i++;
+            prev_separator = 0;
+            continue;
         }
+
+        prev_separator = is_separator(c);
+        i++;
     }
 }
 

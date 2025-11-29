@@ -57,11 +57,14 @@ enum editorKey {
 
 enum editorHighlight { // possible values that the highlight array can contain.
     HL_NORMAL = 0,
+    HL_STRING,
     HL_NUMBER,
     HL_MATCH
 };
 
-#define HL_HIGHLIGHT_NUMBERS (1<<0) // flag bit
+// flag bits
+#define HL_HIGHLIGHT_NUMBERS (1<<0)
+#define HL_HIGHLIGHT_STRINGS (1<<1)
 
 /*** data ***/
 
@@ -104,7 +107,7 @@ struct editorSyntax HLDB[] = { // highlight database
     {
         "c", // filetype
         C_HL_extensions, // filematch
-        HL_HIGHLIGHT_NUMBERS // flags
+        HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS // flags
     }
 };
 // define an HLDB_ENTRIES constant to store the length of the HLDB array.
@@ -324,11 +327,40 @@ void editorUpdateSyntax(erow *row) {
     if (E.syntax == NULL) return;
 
     int prev_separator = 1; // we consider the beginning of the line to be a separator
+    int in_string = 0;
 
     int i = 0;
     while(i < row->rsize) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->highlight[i - 1] : HL_NORMAL;
+        // we highlight both double-quoted strings and single-quoted strings
+        if(E.syntax->flags & HL_HIGHLIGHT_STRINGS) {
+            if(in_string) {
+                row->highlight[i] = HL_STRING;
+
+                // take escaped quotes into account
+                if (c == '\\' && i + 1 < row->rsize) {
+                    row->highlight[i + 1] = HL_STRING;
+                    i += 2;
+                    continue;
+                }
+
+                if(c == in_string) in_string = 0; // here ends the string
+                i++;
+                prev_separator = 1; // the closing quote is considered a separator.
+                continue;
+            }
+            else {
+                if(c == '"' || c == '\'') {
+                    // We store either a double-quote (") or a single-quote (') character as the value of in_string, 
+                    // so that we know which one closes the string.
+                    in_string = c;
+                    row->highlight[i] = HL_STRING;
+                    i++;
+                    continue;
+                }
+            }
+        }
         
         if(E.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
             if((isdigit(c) && (prev_separator || prev_hl == HL_NUMBER)) 
@@ -353,6 +385,8 @@ int editorSyntaxToColor(int hl) {
             return 31; // red
         case HL_MATCH:
             return 34; // blue
+        case HL_STRING:
+            return 35; // magenta
         default:
             return 37; // white
     }

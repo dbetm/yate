@@ -929,7 +929,20 @@ void editorDrawRows(struct abuf *ab) {
             int current_color = -1; // track current char to minimize printing scape sequences
             int j;
             for(j = 0; j < len; j++) {
-                if(hl[j] == HL_NORMAL) {
+                if(iscntrl(c[j])) { // check if the current character is a control character
+                    char sym = (c[j] <= 26) ? '@' + c[j] : '?'; // try to convert it to printable character
+                    abAppend(ab, "\x1b[7m", 4); // invert colors
+                    abAppend(ab, &sym, 1);
+                    abAppend(ab, "\x1b[m", 3); // restore colors
+
+                    // since <esc>[m turns off all text formatting, including colors. So let’s print the escape sequence for the current color afterwards.
+                    if(current_color != -1) {
+                        char buf[16];
+                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", current_color);
+                        abAppend(ab, buf, clen);
+                    }
+                }
+                else if(hl[j] == HL_NORMAL) {
                     if(current_color != -1) {
                         abAppend(ab, "\x1b[39m", 5);
                         current_color = -1;

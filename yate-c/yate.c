@@ -58,6 +58,8 @@ enum editorKey {
 enum editorHighlight { // possible values that the highlight array can contain.
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_KEYWORD1,
+    HL_KEYWORD2,
     HL_STRING,
     HL_NUMBER,
     HL_MATCH
@@ -72,6 +74,7 @@ enum editorHighlight { // possible values that the highlight array can contain.
 struct editorSyntax {
     char *filetype; // name of the filetype that will be displayed to the user in the status bar
     char **filematch; // array of strings, where each string contains a pattern to match a filename against
+    char **keywords; // keywords to hightlight
     char *singleline_comment_start; // each code file could have a different way to start a single-line comment
     int flags; // flags is a bit field that will contain flags for whether to highlight numbers and whether to highlight strings for that filetype.
 };
@@ -104,11 +107,20 @@ struct editorConfig E;
 
 /*** filetypes ***/
 char *C_HL_extensions[] = { ".c", ".h", ".cpp", NULL };
+char *C_HLkeywords[] = {
+    // type 1
+    "switch", "if", "while", "for", "break", "continue", "return", "else",
+    "struct", "union", "typedef", "static", "enum", "class", "case",
+    // type 2
+    "int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|",
+    "void|", "size_t|", NULL
+};
 
 struct editorSyntax HLDB[] = { // highlight database
     {
         "c", // filetype
         C_HL_extensions, // filematch
+        C_HLkeywords, // keywords
         "//", // yes. you know exactly what's going on!
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS // flags
     },
@@ -329,6 +341,8 @@ void editorUpdateSyntax(erow *row) {
 
     if (E.syntax == NULL) return;
 
+    char **keywords = E.syntax->keywords;
+
     char *sc_start = E.syntax->singleline_comment_start;
     int scs_len = sc_start ? strlen(sc_start) : 0;
 
@@ -375,13 +389,32 @@ void editorUpdateSyntax(erow *row) {
                 }
             }
         }
-        
+
         if(E.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
             if((isdigit(c) && (prev_separator || prev_hl == HL_NUMBER)) 
                 || (c == '.' && prev_hl == HL_NUMBER)
             ) {
                 row->highlight[i] = HL_NUMBER;
                 i++;
+                prev_separator = 0;
+                continue;
+            }
+        }
+
+        if(prev_separator) {
+            int j;
+            for (j = 0; keywords[j]; j++) {
+                int klen = strlen(keywords[j]);
+                int kw2 = keywords[j][klen - 1] == '|'; // detect keywords type 2
+                if(kw2) klen--; // discard pipe from keyword lenght
+
+                if(!strncmp(&row->render[i], keywords[j], klen) && is_separator(row->render[i + klen])) {
+                    memset(&row->highlight[i], kw2 ? HL_KEYWORD2 : HL_KEYWORD1, klen);
+                    i += klen;
+                    break;
+                }
+            }
+            if(keywords[j] != NULL) { // check if a keyword was highligthed (break out from the prev for loop)
                 prev_separator = 0;
                 continue;
             }
@@ -396,6 +429,8 @@ int editorSyntaxToColor(int hl) {
     /***maps values in hl to the actual ANSI color codes we want to draw them with.*/
     switch (hl) {
         case HL_COMMENT: return 36; // cyan
+        case HL_KEYWORD1: return 33; // yellow
+        case HL_KEYWORD2: return 32; // green
         case HL_STRING: return 35; // magenta
         case HL_NUMBER: return 31; // red
         case HL_MATCH: return 34; // blue

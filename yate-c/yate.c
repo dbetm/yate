@@ -57,6 +57,7 @@ enum editorKey {
 
 enum editorHighlight { // possible values that the highlight array can contain.
     HL_NORMAL = 0,
+    HL_COMMENT,
     HL_STRING,
     HL_NUMBER,
     HL_MATCH
@@ -71,6 +72,7 @@ enum editorHighlight { // possible values that the highlight array can contain.
 struct editorSyntax {
     char *filetype; // name of the filetype that will be displayed to the user in the status bar
     char **filematch; // array of strings, where each string contains a pattern to match a filename against
+    char *singleline_comment_start; // each code file could have a different way to start a single-line comment
     int flags; // flags is a bit field that will contain flags for whether to highlight numbers and whether to highlight strings for that filetype.
 };
 
@@ -107,8 +109,9 @@ struct editorSyntax HLDB[] = { // highlight database
     {
         "c", // filetype
         C_HL_extensions, // filematch
+        "//", // yes. you know exactly what's going on!
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS // flags
-    }
+    },
 };
 // define an HLDB_ENTRIES constant to store the length of the HLDB array.
 #define HLDB_ENTRIES (sizeof(HLDB) / sizeof(HLDB[0]))
@@ -326,6 +329,9 @@ void editorUpdateSyntax(erow *row) {
 
     if (E.syntax == NULL) return;
 
+    char *sc_start = E.syntax->singleline_comment_start;
+    int scs_len = sc_start ? strlen(sc_start) : 0;
+
     int prev_separator = 1; // we consider the beginning of the line to be a separator
     int in_string = 0;
 
@@ -333,6 +339,14 @@ void editorUpdateSyntax(erow *row) {
     while(i < row->rsize) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->highlight[i - 1] : HL_NORMAL;
+
+        if(scs_len && !in_string) {
+            if(!strncmp(&row->render[i], sc_start, scs_len)) {
+                memset(&row->highlight[i], HL_COMMENT, row->rsize - i);
+                break; // we asume the rest of the line is all part of the comment, yes!
+            }
+        }
+
         // we highlight both double-quoted strings and single-quoted strings
         if(E.syntax->flags & HL_HIGHLIGHT_STRINGS) {
             if(in_string) {
@@ -381,14 +395,11 @@ void editorUpdateSyntax(erow *row) {
 int editorSyntaxToColor(int hl) {
     /***maps values in hl to the actual ANSI color codes we want to draw them with.*/
     switch (hl) {
-        case HL_NUMBER:
-            return 31; // red
-        case HL_MATCH:
-            return 34; // blue
-        case HL_STRING:
-            return 35; // magenta
-        default:
-            return 37; // white
+        case HL_COMMENT: return 36; // cyan
+        case HL_STRING: return 35; // magenta
+        case HL_NUMBER: return 31; // red
+        case HL_MATCH: return 34; // blue
+        default: return 37; // white
     }
 }
 

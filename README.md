@@ -54,3 +54,33 @@ python3 main.py
 ### YATE C
 
 Minimal text editor based in Kilo editor, tutorial from [here](https://viewsourcecode.org/snaptoken/kilo/index.html).
+
+
+#### Main features
+
+- Terminal based text editor.
+- Render tabs.
+- Bar status with filename, number of lines and filetype.
+- Quit confirmation.
+- Basic and incremental search with position relocation for matches.
+- Highlight matches when searching.
+- Highlight digits, strings and comments for C files.
+
+
+#### Main shortcuts
+- Ctrl+s to save into disk.
+- Ctrl+q to quit (press 3 times to confirm when there are modifications).
+- Ctrl+f to search.
+
+#### Run
+
+```bash
+cd yate-c
+make
+./yate yate.c
+```
+
+Note: this opens the code of the text editor in the same code editor, you can initate a new file only executing `./yate`.
+
+
+![](yate-c/yate-floating.png)

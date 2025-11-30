@@ -35,6 +35,9 @@ A lightweight text editor built with **Python** and **Tkinter**, designed for si
 - Persistent Metadata
     - Stores last used directory in assets/metadata.json
 
+- Status bar
+    - Display total of characters along when the file was modified.
+
 #### Setup
 Recommended python version: 3.10
 
@@ -68,6 +71,7 @@ Minimal text editor based in Kilo editor, tutorial from [here](https://viewsourc
 
 
 #### Main shortcuts
+
 - Ctrl+s to save into disk.
 - Ctrl+q to quit (press 3 times to confirm when there are modifications).
 - Ctrl+f to search.

@@ -58,6 +58,7 @@ enum editorKey {
 enum editorHighlight { // possible values that the highlight array can contain.
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_MLCOMMENT,
     HL_KEYWORD1,
     HL_KEYWORD2,
     HL_STRING,
@@ -76,15 +77,19 @@ struct editorSyntax {
     char **filematch; // array of strings, where each string contains a pattern to match a filename against
     char **keywords; // keywords to hightlight
     char *singleline_comment_start; // each code file could have a different way to start a single-line comment
+    char *multiline_comment_start;
+    char *multiline_comment_end;
     int flags; // flags is a bit field that will contain flags for whether to highlight numbers and whether to highlight strings for that filetype.
 };
 
 typedef struct errow { // editor row
+    int idx;
     int size;
     int rsize; // size of the contents of render
     char *chars;
     char *render;
     unsigned char *highlight; // array to store the highlighting of each line
+    int hl_open_comment; // flag to know if the row is part of an unclosed comment
 } erow;
 struct editorConfig {
     int cx, cy; // horizontal coordinate and vertical coordinate
@@ -122,6 +127,8 @@ struct editorSyntax HLDB[] = { // highlight database
         C_HL_extensions, // filematch
         C_HLkeywords, // keywords
         "//", // yes. you know exactly what's going on!
+        "/*",
+        "*/",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS // flags
     },
 };
@@ -343,21 +350,52 @@ void editorUpdateSyntax(erow *row) {
 
     char **keywords = E.syntax->keywords;
 
+    // single-line comments (aliases)
     char *sc_start = E.syntax->singleline_comment_start;
     int scs_len = sc_start ? strlen(sc_start) : 0;
+    // multi-line comments (aliases)
+    char *mc_start = E.syntax->multiline_comment_start;
+    char *mc_end = E.syntax->multiline_comment_end;
+    int mcs_len = mc_start ? strlen(mc_start) : 0;
+    int mce_len = mc_end ? strlen(mc_end) : 0;
 
     int prev_separator = 1; // we consider the beginning of the line to be a separator
     int in_string = 0;
+    /*initialize in_comment to true if the previous row has an unclosed multi-line comment. 
+    If that’s the case, then the current row will start out being highlighted as a multi-line comment.*/
+    int in_comment = (row->idx > 0 && E.row[row->idx - 1].hl_open_comment);
 
     int i = 0;
     while(i < row->rsize) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->highlight[i - 1] : HL_NORMAL;
 
-        if(scs_len && !in_string) {
+        if(scs_len && !in_string && !in_comment) {
             if(!strncmp(&row->render[i], sc_start, scs_len)) {
                 memset(&row->highlight[i], HL_COMMENT, row->rsize - i);
                 break; // we asume the rest of the line is all part of the comment, yes!
+            }
+        }
+
+        if(mcs_len && mce_len && !in_string) {
+            if(in_comment) {
+                row->highlight[i] = HL_MLCOMMENT;
+                if (!strncmp(&row->render[i], mc_end, mce_len)) {
+                    memset(&row->highlight[i], HL_MLCOMMENT, mce_len);
+                    i += mce_len;
+                    in_comment = 0;
+                    prev_separator = 1;
+                    continue;
+                }
+
+                i++;
+                continue;
+            }
+            else if(!strncmp(&row->render[i], mc_start, mcs_len)) {
+                memset(&row->highlight[i], HL_MLCOMMENT, mcs_len);
+                i += mcs_len;
+                in_comment = 1;
+                continue;
             }
         }
 
@@ -422,13 +460,25 @@ void editorUpdateSyntax(erow *row) {
 
         prev_separator = is_separator(c);
         i++;
-    }
+    }  
+    /*So far, we have only been updating the syntax of a line when the user changes that specific line. 
+    But with multi-line comments, a user could comment out an entire file just by changing one line. 
+    So it seems like we need to update the syntax of all the lines following the current line. 
+    However, we know the highlighting of the next line will not change if the value of this line’s 
+    hl_open_comment did not change. So we check if it changed, and only call editorUpdateSyntax() 
+    on the next line if hl_open_comment changed (and if there is a next line in the file).
+    */
+    int changed = (row->hl_open_comment != in_comment);
+    row->hl_open_comment = in_comment;
+    if(changed && row->idx + 1 < E.numrows)
+        editorUpdateSyntax(&E.row[row->idx + 1]);
 }
 
 int editorSyntaxToColor(int hl) {
     /***maps values in hl to the actual ANSI color codes we want to draw them with.*/
     switch (hl) {
-        case HL_COMMENT: return 36; // cyan
+        case HL_COMMENT: 
+        case HL_MLCOMMENT: return 36; // cyan
         case HL_KEYWORD1: return 33; // yellow
         case HL_KEYWORD2: return 32; // green
         case HL_STRING: return 35; // magenta
@@ -534,6 +584,10 @@ void editorInsertRow(int at, char *s, size_t len) {
     E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
     // dest, origin and num_bytes (size of the block to move)
     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+    // update the index of below rows
+    for (int j = at + 1; j <= E.numrows; j++) E.row[j].idx++;
+
+    E.row[at].idx = at;
 
     E.row[at].size = len;
     E.row[at].chars = malloc(len + 1); // reserve the memory for the message
@@ -542,6 +596,7 @@ void editorInsertRow(int at, char *s, size_t len) {
     E.row[at].rsize = 0;
     E.row[at].render = NULL;
     E.row[at].highlight = NULL;
+    E.row[at].hl_open_comment = 0;
     editorUpdateRow(&E.row[at]);
 
     E.numrows++; // a line must be displayed now
@@ -559,6 +614,8 @@ void editorDelRow(int at) {
     editorFreeRow(&E.row[at]);
     // dest, origin and num_bytes (size of the block to move, including null char at the end)
     memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+    // update the index of below rows
+    for (int j = at; j < E.numrows - 1; j++) E.row[j].idx--;
     E.numrows--;
     E.dirty++;
 }
